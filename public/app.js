@@ -92,12 +92,103 @@ function identityFor(profile, person) {
 }
 
 function newcomerActionFor(person) {
+  if (person.portrait?.priority === "P0") return "重点跟进：可邀约交流、案例共创或社区专题";
+  if (person.portrait?.priority === "P1") return "优先观察：适合加入新增贡献者名单并轻触达";
   if (person.count >= 3 || person.recent30 >= 3) return "优先关注，可邀约交流或案例复盘";
   if (person.identity === "语言/工具链开发者") return "适合邀请参与工具链/基础库专题";
   if (person.identity === "AI/LLM 开发者") return "适合追踪 AI 原生案例";
   if (person.identity === "高校/研究机构线索") return "适合纳入校园/研究者触达";
   if (person.identity === "公开资料较少" || person.signals.includes("身份线索少")) return "先观察模块质量，补充公开信息线索";
   return "加入新增贡献者观察名单";
+}
+
+function buildContributorPortrait(person, snapshotDate) {
+  const profile = person.profile;
+  const accountAgeDays = profile?.created_at ? daysBetween(dayKey(profile.created_at), snapshotDate) : null;
+  const activeSpanDays = daysBetween(person.first, person.last);
+  const repoRatio = person.count ? person.repoCount / person.count : 0;
+  const profileFields = [
+    profile?.name,
+    profile?.bio,
+    profile?.location,
+    profile?.company,
+    profile?.blog,
+    profile?.twitter_username
+  ];
+  const profileScore = profile ? profileFields.filter(Boolean).length / profileFields.length : 0;
+  const followers = profile?.followers || 0;
+  const publicRepos = profile?.public_repos || 0;
+  const primaryCategory = person.topCategories?.[0]?.[0] || "通用/实验";
+  const confidenceParts = [
+    Boolean(profile),
+    Boolean(profile?.bio),
+    Boolean(profile?.location),
+    Boolean(profile?.company),
+    person.count >= 2,
+    repoRatio >= 0.6
+  ];
+  const confidence = confidenceParts.filter(Boolean).length / confidenceParts.length;
+
+  let accountAgeLabel = "GitHub 资历未知";
+  if (accountAgeDays !== null) {
+    if (accountAgeDays >= 3650) accountAgeLabel = "10 年以上 GitHub 老用户";
+    else if (accountAgeDays >= 1825) accountAgeLabel = "5 年以上 GitHub 用户";
+    else if (accountAgeDays >= 730) accountAgeLabel = "2 年以上 GitHub 用户";
+    else accountAgeLabel = "较新的 GitHub 账号";
+  }
+
+  let influenceLabel = "公开影响力较低";
+  if (followers >= 1000) influenceLabel = "高公开影响力";
+  else if (followers >= 200) influenceLabel = "较高公开影响力";
+  else if (followers >= 50) influenceLabel = "中等公开影响力";
+  else if (publicRepos >= 50) influenceLabel = "仓库活跃但粉丝较少";
+
+  let paceLabel = "试水型贡献者";
+  if (person.count >= 20) paceLabel = "核心高产贡献者";
+  else if (person.count >= 5 && activeSpanDays >= 90) paceLabel = "持续贡献型";
+  else if (person.count >= 3 && person.recent30 / person.count >= 0.7) paceLabel = "近期集中爆发型";
+  else if (person.count >= 2) paceLabel = "轻量复投型";
+
+  let transparencyLabel = "仓库透明度偏低";
+  if (repoRatio >= 0.9) transparencyLabel = "仓库透明度高";
+  else if (repoRatio >= 0.6) transparencyLabel = "仓库透明度中等";
+
+  let profileLabel = "公开资料较少";
+  if (profileScore >= 0.65) profileLabel = "公开资料较完整";
+  else if (profileScore >= 0.35) profileLabel = "公开资料中等";
+
+  let priority = "P2";
+  let priorityReason = "先观察模块质量和后续复投";
+  if (
+    person.count >= 5 ||
+    followers >= 200 ||
+    (person.count >= 3 && repoRatio >= 0.6) ||
+    ["语言/工具链开发者", "AI/LLM 开发者", "高校/研究机构线索"].includes(person.identity)
+  ) {
+    priority = "P1";
+    priorityReason = "有明确方向或可触达线索";
+  }
+  if (person.count >= 10 || followers >= 1000 || (person.recent30 >= 5 && repoRatio >= 0.8)) {
+    priority = "P0";
+    priorityReason = "高产或高影响力，值得重点跟进";
+  }
+
+  return {
+    accountAgeLabel,
+    influenceLabel,
+    paceLabel,
+    transparencyLabel,
+    profileLabel,
+    priority,
+    priorityReason,
+    confidence,
+    primaryCategory,
+    repoRatio,
+    profileScore,
+    followers,
+    publicRepos,
+    activeSpanDays
+  };
 }
 
 function categoryFor(module) {
@@ -204,11 +295,16 @@ function analyze(snapshot) {
       locations[location] = (locations[location] || 0) + 1;
       identities[identity] = (identities[identity] || 0) + 1;
     }
+    const portrait = buildContributorPortrait(
+      { ...person, profile, location, identity, topCategories, topKeywords, signals },
+      snapshot.date
+    );
     return {
       ...person,
       profile,
       location,
       identity,
+      portrait,
       topCategories,
       topKeywords,
       signals,
@@ -220,6 +316,12 @@ function analyze(snapshot) {
         profile?.bio || "",
         location,
         identity,
+        portrait.accountAgeLabel,
+        portrait.influenceLabel,
+        portrait.paceLabel,
+        portrait.transparencyLabel,
+        portrait.profileLabel,
+        portrait.priority,
         person.modules.map((m) => m.name).join(" "),
         topKeywords.map(([key]) => key).join(" "),
         signals.join(" ")
@@ -538,13 +640,14 @@ function renderNewcomers() {
         <td><span class="tag hot">${person.identity}</span></td>
         <td><strong>${fmtNumber(person.count)}</strong><div class="subtle">近 30 天 ${fmtNumber(person.recent30)}</div></td>
         <td class="subtle">${modules.join("、")}</td>
+        <td>${renderPortraitDetails(person)}</td>
         <td>${newcomerActionFor(person)}</td>
       </tr>
     `;
   }).join("");
 
   if (!in30.length) {
-    els.newcomerRows.innerHTML = `<tr><td colspan="7" class="subtle">近 30 天暂无首次出现的新增 owner。</td></tr>`;
+    els.newcomerRows.innerHTML = `<tr><td colspan="8" class="subtle">近 30 天暂无首次出现的新增 owner。</td></tr>`;
   }
 }
 
@@ -598,6 +701,28 @@ function renderBarList(container, data, limit) {
   `).join("");
 }
 
+function renderPortraitDetails(person) {
+  const portrait = person.portrait;
+  if (!portrait) return `<span class="subtle">暂无画像</span>`;
+  const confidenceClass = portrait.confidence >= 0.66 ? "hot" : portrait.confidence >= 0.42 ? "warn" : "risk";
+  return `
+    <div class="portrait-cell">
+      <div class="pill-row">
+        <span class="tag ${portrait.priority === "P0" ? "hot" : portrait.priority === "P1" ? "warn" : ""}">${portrait.priority}</span>
+        <span class="tag ${confidenceClass}">置信度 ${fmtPct(portrait.confidence, 0)}</span>
+      </div>
+      <div class="portrait-lines">
+        <div>${portrait.accountAgeLabel}</div>
+        <div>${portrait.influenceLabel} · followers ${fmtNumber(portrait.followers)}</div>
+        <div>${portrait.paceLabel} · ${portrait.primaryCategory}</div>
+        <div>${portrait.transparencyLabel} · repo ${fmtPct(portrait.repoRatio, 0)}</div>
+        <div>${portrait.profileLabel}</div>
+      </div>
+      <div class="subtle">${portrait.priorityReason}</div>
+    </div>
+  `;
+}
+
 function renderContributors() {
   const query = state.search.trim().toLowerCase();
   const rows = state.analysis.contributors
@@ -613,7 +738,7 @@ function renderContributors() {
       .slice(0, 6)
       .map((module) => moduleShort(module.name));
     const profile = person.profile;
-    const profileHtml = profile ? `
+    const profileHtml = profile?.html_url ? `
       <div class="profile-cell">
         <a href="${profile.html_url}" target="_blank" rel="noreferrer">${profile.name || profile.login || person.owner}</a>
         <div class="subtle">${profile.location || "地区未填写"}</div>
@@ -630,6 +755,7 @@ function renderContributors() {
         <td>${fmtNumber(person.recent30)} / 30 天</td>
         <td>${category}<div class="subtle">${person.topKeywords.map(([key]) => key).join("、")}</div></td>
         <td><span class="tag hot">${person.identity}</span><div class="subtle">${person.location}</div></td>
+        <td>${renderPortraitDetails(person)}</td>
         <td><div class="pill-row">${tags.map((tag) => `<span class="tag ${tag.includes("缺失") || tag.includes("沉寂") ? "risk" : tag.includes("活跃") || tag.includes("核心") ? "hot" : "warn"}">${tag}</span>`).join("")}</div></td>
         <td class="subtle">${modules.join("、")}</td>
       </tr>

@@ -289,6 +289,20 @@ tr:last-child td {
   max-width: 220px;
 }
 
+.portrait-cell {
+  min-width: 220px;
+  max-width: 300px;
+}
+
+.portrait-lines {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0;
+  color: #42505b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .subtle {
   color: var(--muted);
 }
