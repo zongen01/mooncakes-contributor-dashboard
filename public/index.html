@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mooncakes 贡献者每日分析</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">mooncakes.io contributor intelligence</p>
+          <h1>Mooncakes 贡献者每日分析</h1>
+        </div>
+        <div class="top-actions">
+          <div class="status-pill" id="statusPill">等待分析</div>
+          <button id="refreshBtn" type="button">刷新今日数据</button>
+        </div>
+      </header>
+
+      <section class="summary-grid" id="summaryGrid" aria-live="polite"></section>
+
+      <section class="dashboard-grid">
+        <article class="panel span-8">
+          <div class="panel-head">
+            <div>
+              <h2>每天新增模块</h2>
+              <p>按模块 `created_at` 统计，显示最近 45 天。</p>
+            </div>
+            <select id="rangeSelect" aria-label="选择日期范围">
+              <option value="30">最近 30 天</option>
+              <option value="45" selected>最近 45 天</option>
+              <option value="90">最近 90 天</option>
+              <option value="all">全部</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="dailyChart" height="260"></canvas>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>新增模块</th>
+                  <th>新增 owner</th>
+                  <th>代表模块</th>
+                </tr>
+              </thead>
+              <tbody id="dailyRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-4">
+          <div class="panel-head">
+            <div>
+              <h2>问题信号</h2>
+              <p>自动从集中度、长尾、透明度、增速里找异常。</p>
+            </div>
+          </div>
+          <div id="issueList" class="issue-list"></div>
+        </article>
+
+        <article class="panel span-6">
+          <div class="panel-head">
+            <div>
+              <h2>贡献者分层</h2>
+              <p>按模块数量看核心、腰部和长尾。</p>
+            </div>
+          </div>
+          <div id="tierList" class="tier-list"></div>
+        </article>
+
+        <article class="panel span-6">
+          <div class="panel-head">
+            <div>
+              <h2>主题分布</h2>
+              <p>由关键词和描述粗分，用来看生态缺口。</p>
+            </div>
+          </div>
+          <div id="categoryList" class="bar-list"></div>
+        </article>
+
+        <article class="panel span-6">
+          <div class="panel-head">
+            <div>
+              <h2>GitHub 地区分布</h2>
+              <p>只统计公开填写 location 的 GitHub 主页。</p>
+            </div>
+          </div>
+          <div id="locationList" class="bar-list"></div>
+        </article>
+
+        <article class="panel span-6">
+          <div class="panel-head">
+            <div>
+              <h2>身份/组织线索</h2>
+              <p>根据公开 type、company、bio 做非敏感职业画像。</p>
+            </div>
+          </div>
+          <div id="identityList" class="bar-list"></div>
+        </article>
+
+        <article class="panel span-12">
+          <div class="panel-head">
+            <div>
+              <h2>贡献者画像表</h2>
+              <p>支持筛选 owner、地区、组织、关键词、模块名和风险标签。</p>
+            </div>
+            <input id="searchInput" type="search" placeholder="搜索贡献者 / 地区 / 组织 / 关键词">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>owner</th>
+                  <th>GitHub 公开资料</th>
+                  <th>模块数</th>
+                  <th>最近新增</th>
+                  <th>近期新增</th>
+                  <th>方向画像</th>
+                  <th>身份线索</th>
+                  <th>问题提示</th>
+                  <th>代表模块</th>
+                </tr>
+              </thead>
+              <tbody id="contributorRows"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

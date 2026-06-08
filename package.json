@@ -1,0 +1,10 @@
+{
+  "name": "mooncakes-contributor-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:data": "node scripts/build-snapshot.mjs public/data/latest.json",
+    "start": "node server.mjs"
+  }
+}
