@@ -141,6 +141,14 @@ button:disabled {
   padding: 16px;
 }
 
+.mini-metric {
+  min-height: 104px;
+  border: 1px solid #e5eaee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px;
+}
+
 .metric-label {
   color: var(--muted);
   font-size: 13px;
@@ -158,6 +166,13 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.mini-metric-value {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.15;
 }
 
 .dashboard-grid {
@@ -322,6 +337,39 @@ tr:last-child td {
   gap: 10px;
 }
 
+.newcomer-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.newcomer-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.newcomer-bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.newcomer-bars > div {
+  border: 1px solid #e5eaee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.newcomer-bars h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.newcomer-table-wrap {
+  max-height: 330px;
+}
+
 .issue-card,
 .tier-card {
   border: 1px solid #e5eaee;
@@ -391,6 +439,10 @@ tr:last-child td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .newcomer-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .span-4,
   .span-6,
   .span-8 {
@@ -412,6 +464,11 @@ tr:last-child td {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .newcomer-summary-grid,
+  .newcomer-bars {
     grid-template-columns: 1fr;
   }
 

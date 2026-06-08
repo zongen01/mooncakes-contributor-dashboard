@@ -63,6 +63,44 @@
           <div id="issueList" class="issue-list"></div>
         </article>
 
+        <article class="panel span-12">
+          <div class="panel-head">
+            <div>
+              <h2>新增贡献者画像</h2>
+              <p>按 owner 首次发布模块日期统计，重点看近 7/30 天新出现的人。</p>
+            </div>
+          </div>
+          <div class="newcomer-layout">
+            <div class="newcomer-summary-grid" id="newcomerSummary"></div>
+            <div class="newcomer-bars">
+              <div>
+                <h3>新增人员地区</h3>
+                <div id="newcomerLocationList" class="bar-list"></div>
+              </div>
+              <div>
+                <h3>新增人员身份线索</h3>
+                <div id="newcomerIdentityList" class="bar-list"></div>
+              </div>
+            </div>
+            <div class="table-wrap compact newcomer-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>新增 owner</th>
+                    <th>首次出现</th>
+                    <th>公开地区/组织</th>
+                    <th>身份线索</th>
+                    <th>模块数</th>
+                    <th>代表模块</th>
+                    <th>建议动作</th>
+                  </tr>
+                </thead>
+                <tbody id="newcomerRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+
         <article class="panel span-6">
           <div class="panel-head">
             <div>

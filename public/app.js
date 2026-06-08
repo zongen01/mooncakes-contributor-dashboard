@@ -12,6 +12,10 @@ const els = {
   dailyChart: document.querySelector("#dailyChart"),
   dailyRows: document.querySelector("#dailyRows"),
   issueList: document.querySelector("#issueList"),
+  newcomerSummary: document.querySelector("#newcomerSummary"),
+  newcomerLocationList: document.querySelector("#newcomerLocationList"),
+  newcomerIdentityList: document.querySelector("#newcomerIdentityList"),
+  newcomerRows: document.querySelector("#newcomerRows"),
   tierList: document.querySelector("#tierList"),
   categoryList: document.querySelector("#categoryList"),
   locationList: document.querySelector("#locationList"),
@@ -85,6 +89,15 @@ function identityFor(profile, person) {
   if (company) return "公司/组织线索";
   if (profile?.bio) return "个人开发者";
   return "公开资料较少";
+}
+
+function newcomerActionFor(person) {
+  if (person.count >= 3 || person.recent30 >= 3) return "优先关注，可邀约交流或案例复盘";
+  if (person.identity === "语言/工具链开发者") return "适合邀请参与工具链/基础库专题";
+  if (person.identity === "AI/LLM 开发者") return "适合追踪 AI 原生案例";
+  if (person.identity === "高校/研究机构线索") return "适合纳入校园/研究者触达";
+  if (person.identity === "公开资料较少" || person.signals.includes("身份线索少")) return "先观察模块质量，补充公开信息线索";
+  return "加入新增贡献者观察名单";
 }
 
 function categoryFor(module) {
@@ -231,6 +244,7 @@ function analyze(snapshot) {
   const singleOwners = contributors.filter((person) => person.count === 1).length;
   const top10Count = contributors.slice(0, 10).reduce((sum, person) => sum + person.count, 0);
   const top20Count = contributors.slice(0, 20).reduce((sum, person) => sum + person.count, 0);
+  const newcomers = buildNewcomerAnalysis(contributors, snapshot.date);
 
   const issues = buildIssues({
     modules,
@@ -252,6 +266,7 @@ function analyze(snapshot) {
     modules,
     stats,
     contributors,
+    newcomers,
     dailyRows,
     categories,
     locations,
@@ -268,6 +283,43 @@ function analyze(snapshot) {
     top10Count,
     top20Count,
     issues
+  };
+}
+
+function buildNewcomerAnalysis(contributors, snapshotDate) {
+  const in30 = contributors
+    .filter((person) => daysBetween(person.first, snapshotDate) <= 30)
+    .sort((a, b) => b.first.localeCompare(a.first) || b.count - a.count || a.owner.localeCompare(b.owner));
+  const in7 = in30.filter((person) => daysBetween(person.first, snapshotDate) <= 7);
+  const today = in30.filter((person) => person.first === snapshotDate);
+  const locations = {};
+  const identities = {};
+  const categories = {};
+  let withLocation = 0;
+  let withCompany = 0;
+  let singleModule = 0;
+
+  for (const person of in30) {
+    locations[person.location] = (locations[person.location] || 0) + 1;
+    identities[person.identity] = (identities[person.identity] || 0) + 1;
+    if (person.profile?.location) withLocation += 1;
+    if (person.profile?.company) withCompany += 1;
+    if (person.count === 1) singleModule += 1;
+    for (const [category, count] of person.topCategories) {
+      categories[category] = (categories[category] || 0) + count;
+    }
+  }
+
+  return {
+    in30,
+    in7,
+    today,
+    locations,
+    identities,
+    categories,
+    withLocation,
+    withCompany,
+    singleModule
   };
 }
 
@@ -339,6 +391,7 @@ function render() {
   renderSummary();
   renderDaily();
   renderIssues();
+  renderNewcomers();
   renderTiers();
   renderCategories();
   renderGithubPanels();
@@ -442,6 +495,57 @@ function renderIssues() {
       <p>${issue.body}</p>
     </div>
   `).join("");
+}
+
+function renderNewcomers() {
+  const newcomers = state.analysis.newcomers;
+  const in30 = newcomers.in30;
+  const topCategory = topEntries(newcomers.categories, 1)[0];
+  const summary = [
+    ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
+    ["近 7 天新增人员", fmtNumber(newcomers.in7.length), `近 30 天新增 ${fmtNumber(in30.length)} 人`],
+    ["公开地区覆盖", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 人填写 location`],
+    ["组织线索覆盖", fmtPct(in30.length ? newcomers.withCompany / in30.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(in30.length)} 人填写 company`],
+    ["一次性新增占比", fmtPct(in30.length ? newcomers.singleModule / in30.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
+    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"]
+  ];
+
+  els.newcomerSummary.innerHTML = summary.map(([label, value, note]) => `
+    <div class="mini-metric">
+      <div class="metric-label">${label}</div>
+      <div class="mini-metric-value">${value}</div>
+      <div class="metric-note">${note}</div>
+    </div>
+  `).join("");
+
+  renderBarList(els.newcomerLocationList, newcomers.locations, 8);
+  renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
+
+  els.newcomerRows.innerHTML = in30.slice(0, 40).map((person) => {
+    const modules = person.modules
+      .slice()
+      .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)))
+      .slice(0, 4)
+      .map((module) => moduleShort(module.name));
+    return `
+      <tr>
+        <td class="owner-cell">
+          ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
+          <div class="subtle">${person.profile?.name || "GitHub 名称未填写"}</div>
+        </td>
+        <td>${person.first}</td>
+        <td>${person.location}<div class="subtle">${cleanCompany(person.profile?.company) || "组织未填写"}</div></td>
+        <td><span class="tag hot">${person.identity}</span></td>
+        <td><strong>${fmtNumber(person.count)}</strong><div class="subtle">近 30 天 ${fmtNumber(person.recent30)}</div></td>
+        <td class="subtle">${modules.join("、")}</td>
+        <td>${newcomerActionFor(person)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  if (!in30.length) {
+    els.newcomerRows.innerHTML = `<tr><td colspan="7" class="subtle">近 30 天暂无首次出现的新增 owner。</td></tr>`;
+  }
 }
 
 function renderTiers() {
