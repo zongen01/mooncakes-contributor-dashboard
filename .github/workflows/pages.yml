@@ -32,6 +32,9 @@ jobs:
         run: npm run build:data
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          AI_PORTRAIT_LIMIT: ${{ vars.AI_PORTRAIT_LIMIT }}
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

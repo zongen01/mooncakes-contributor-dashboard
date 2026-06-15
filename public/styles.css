@@ -310,6 +310,19 @@ tr:last-child td {
   line-height: 1.35;
 }
 
+.ai-portrait {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  border: 1px solid rgba(76, 128, 168, 0.2);
+  border-radius: 8px;
+  background: rgba(76, 128, 168, 0.06);
+  padding: 8px;
+  color: #2d4658;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .subtle {
   color: var(--muted);
 }

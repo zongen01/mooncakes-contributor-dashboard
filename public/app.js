@@ -63,6 +63,10 @@ function hasUsableProfile(profile) {
   return Boolean(profile && profile.exists !== false && !profile.error);
 }
 
+function hasAiPortrait(portrait) {
+  return Boolean(portrait && !portrait.error && portrait.summary && Number.isFinite(Number(portrait.confidence)));
+}
+
 const UNKNOWN_LOCATION = "未公开/不可判定";
 
 function normalizeLocation(location) {
@@ -137,6 +141,7 @@ function inferIdentity(profile, person) {
 }
 
 function newcomerActionFor(person) {
+  if (hasAiPortrait(person.aiPortrait) && person.aiPortrait.suggested_action) return `AI建议：${person.aiPortrait.suggested_action}`;
   if (person.portrait?.priority === "P0") return "重点跟进：可邀约交流、案例共创或社区专题";
   if (person.portrait?.priority === "P1") return "优先观察：适合加入新增贡献者名单并轻触达";
   if (person.count >= 3 || person.recent30 >= 3) return "优先关注，可邀约交流或案例复盘";
@@ -151,6 +156,7 @@ function newcomerActionFor(person) {
 function buildContributorPortrait(person, snapshotDate) {
   const profile = person.profile;
   const usableProfile = hasUsableProfile(profile);
+  const aiPortrait = hasAiPortrait(person.aiPortrait) ? person.aiPortrait : null;
   const accountAgeDays = profile?.created_at ? daysBetween(dayKey(profile.created_at), snapshotDate) : null;
   const activeSpanDays = daysBetween(person.first, person.last);
   const repoRatio = person.count ? person.repoCount / person.count : 0;
@@ -204,7 +210,7 @@ function buildContributorPortrait(person, snapshotDate) {
   if (profileScore >= 0.65) profileLabel = "公开资料较完整";
   else if (profileScore >= 0.35) profileLabel = "公开资料中等";
 
-  let priority = "P2";
+  let priority = aiPortrait?.priority || "P2";
   let priorityReason = "先观察模块质量、公开资料和后续复投";
   if (
     person.count >= 5 ||
@@ -219,6 +225,10 @@ function buildContributorPortrait(person, snapshotDate) {
     priority = "P0";
     priorityReason = "高产或高影响力，值得重点跟进";
   }
+  if (aiPortrait && aiPortrait.priority === "P0" && priority !== "P0") {
+    priority = "P1";
+    priorityReason = "AI 画像提示有重点观察价值，先按 P1 跟进";
+  }
 
   return {
     accountAgeLabel,
@@ -228,14 +238,15 @@ function buildContributorPortrait(person, snapshotDate) {
     profileLabel,
     priority,
     priorityReason,
-    confidence,
+    confidence: aiPortrait ? Math.max(confidence, Math.min(0.95, Number(aiPortrait.confidence))) : confidence,
     primaryCategory,
     repoRatio,
     profileScore,
     followers,
     publicRepos,
     activeSpanDays,
-    evidence: person.identityEvidence || []
+    evidence: person.identityEvidence || [],
+    aiPortrait
   };
 }
 
@@ -254,6 +265,8 @@ function analyze(snapshot) {
   const modules = snapshot.modules || [];
   const stats = snapshot.statistics || {};
   const githubProfiles = snapshot.github_profiles || {};
+  const aiPortraits = snapshot.ai_portraits || {};
+  const aiMeta = snapshot.ai_meta || { enabled: false };
   const rawGithubMeta = snapshot.github_meta || {};
   const githubProfileAvailable = Object.values(githubProfiles).filter(hasUsableProfile).length;
   const githubMeta = {
@@ -336,9 +349,12 @@ function analyze(snapshot) {
     const topKeywords = topEntries(person.keywords, 5);
     const rawProfile = githubProfiles[person.owner] || null;
     const profile = hasUsableProfile(rawProfile) ? rawProfile : null;
+    const rawAiPortrait = aiPortraits[person.owner] || null;
+    const aiPortrait = hasAiPortrait(rawAiPortrait) ? rawAiPortrait : null;
     const location = normalizeLocation(profile?.location);
     const identityInfo = inferIdentity(profile, { ...person, topCategories, topKeywords });
-    const identity = identityInfo.label;
+    const identity = aiPortrait?.identity_label ? `AI：${aiPortrait.identity_label}` : identityInfo.label;
+    const identityConfidence = aiPortrait ? Math.max(identityInfo.confidence, Number(aiPortrait.confidence)) : identityInfo.confidence;
     const signals = [];
     if (person.count >= 20) signals.push("核心高产");
     if (person.recent30 >= 5) signals.push("近期活跃");
@@ -348,6 +364,7 @@ function analyze(snapshot) {
     if (!profile) signals.push("GitHub 未覆盖");
     if (profile && location === UNKNOWN_LOCATION) signals.push("地区不可判定");
     if (profile && !profile.company && !profile.bio) signals.push("身份线索少");
+    if (aiPortrait) signals.push("AI已分析");
     if (profile) {
       if (location !== UNKNOWN_LOCATION) locations[location] = (locations[location] || 0) + 1;
       identities[identity] = (identities[identity] || 0) + 1;
@@ -358,8 +375,9 @@ function analyze(snapshot) {
         profile,
         location,
         identity,
-        identityConfidence: identityInfo.confidence,
-        identityEvidence: identityInfo.evidence,
+        identityConfidence,
+        identityEvidence: aiPortrait?.evidence || identityInfo.evidence,
+        aiPortrait,
         topCategories,
         topKeywords,
         signals
@@ -370,10 +388,12 @@ function analyze(snapshot) {
       ...person,
       profile,
       rawProfile,
+      rawAiPortrait,
+      aiPortrait,
       location,
       identity,
-      identityConfidence: identityInfo.confidence,
-      identityEvidence: identityInfo.evidence,
+      identityConfidence,
+      identityEvidence: aiPortrait?.evidence || identityInfo.evidence,
       portrait,
       topCategories,
       topKeywords,
@@ -392,6 +412,8 @@ function analyze(snapshot) {
         portrait.transparencyLabel,
         portrait.profileLabel,
         portrait.priority,
+        aiPortrait?.summary || "",
+        (aiPortrait?.tags || []).join(" "),
         person.modules.map((m) => m.name).join(" "),
         topKeywords.map(([key]) => key).join(" "),
         signals.join(" ")
@@ -445,6 +467,8 @@ function analyze(snapshot) {
     identities,
     licenses,
     githubProfiles,
+    aiPortraits,
+    aiMeta,
     githubMeta,
     repo: { missing: repoMissing, github: repoGithub, community: repoCommunity },
     recent30Count,
@@ -471,15 +495,19 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   let withLocation = 0;
   let withCompany = 0;
   let highConfidence = 0;
+  let withAi = 0;
+  let highConfidenceAi = 0;
   let singleModule = 0;
 
   for (const person of in30) {
     if (person.profile) withProfile += 1;
+    if (person.aiPortrait) withAi += 1;
     if (person.location !== UNKNOWN_LOCATION) locations[person.location] = (locations[person.location] || 0) + 1;
     identities[person.identity] = (identities[person.identity] || 0) + 1;
     if (person.location !== UNKNOWN_LOCATION) withLocation += 1;
     if (cleanCompany(person.profile?.company)) withCompany += 1;
     if ((person.portrait?.confidence || 0) >= 0.66) highConfidence += 1;
+    if ((person.aiPortrait?.confidence || 0) >= 0.66) highConfidenceAi += 1;
     if (person.count === 1) singleModule += 1;
     for (const [category, count] of person.topCategories) {
       categories[category] = (categories[category] || 0) + count;
@@ -497,6 +525,8 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     withLocation,
     withCompany,
     highConfidence,
+    withAi,
+    highConfidenceAi,
     singleModule
   };
 }
@@ -679,12 +709,14 @@ function renderNewcomers() {
   const newcomers = state.analysis.newcomers;
   const in30 = newcomers.in30;
   const topCategory = topEntries(newcomers.categories, 1)[0];
+  const aiMeta = state.analysis.aiMeta || {};
   const summary = [
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(newcomers.in7.length), `近 30 天新增 ${fmtNumber(in30.length)} 人`],
+    ["AI 画像覆盖", fmtPct(in30.length ? newcomers.withAi / in30.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in30.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
     ["GitHub 资料覆盖", fmtPct(in30.length ? newcomers.withProfile / in30.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in30.length)} 个 owner 可用`],
     ["可判定地区", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 个公开 location 可归类`],
-    ["高置信画像", fmtPct(in30.length ? newcomers.highConfidence / in30.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%`],
+    ["高置信画像", fmtPct(in30.length ? newcomers.highConfidence / in30.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
     ["一次性新增占比", fmtPct(in30.length ? newcomers.singleModule / in30.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
     ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"],
     ["组织字段填写", fmtPct(in30.length ? newcomers.withCompany / in30.length : 0), `${fmtNumber(newcomers.withCompany)} 个 owner 填写 company`]
@@ -784,6 +816,18 @@ function renderPortraitDetails(person) {
   if (!portrait) return `<span class="subtle">暂无画像</span>`;
   const confidenceClass = portrait.confidence >= 0.66 ? "hot" : portrait.confidence >= 0.42 ? "warn" : "risk";
   const evidence = (portrait.evidence || []).slice(0, 2).join("；") || "仅按公开字段和模块元数据估算";
+  const ai = hasAiPortrait(person.aiPortrait) ? person.aiPortrait : null;
+  const aiHtml = ai ? `
+    <div class="ai-portrait">
+      <div class="pill-row">
+        <span class="tag hot">AI画像</span>
+        <span class="tag ${Number(ai.confidence) >= 0.66 ? "hot" : Number(ai.confidence) >= 0.42 ? "warn" : "risk"}">AI ${fmtPct(Number(ai.confidence), 0)}</span>
+      </div>
+      <div>${ai.summary}</div>
+      <div class="subtle">证据：${(ai.evidence || []).slice(0, 2).join("；") || "未给出"}</div>
+      ${(ai.risks || []).length ? `<div class="subtle">风险：${ai.risks.slice(0, 2).join("；")}</div>` : ""}
+    </div>
+  ` : "";
   return `
     <div class="portrait-cell">
       <div class="pill-row">
@@ -799,6 +843,7 @@ function renderPortraitDetails(person) {
       </div>
       <div class="subtle">${portrait.priorityReason}</div>
       <div class="evidence-line">${evidence}</div>
+      ${aiHtml}
     </div>
   `;
 }
