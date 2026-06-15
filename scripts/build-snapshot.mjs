@@ -107,10 +107,12 @@ async function main() {
     .map(([owner]) => owner);
 
   let failed = 0;
+  let notFound = 0;
   const githubProfiles = {};
   await mapLimit(owners, GITHUB_CONCURRENCY, async (owner) => {
     try {
       githubProfiles[owner] = await fetchGithubProfile(owner);
+      if (githubProfiles[owner]?.exists === false) notFound += 1;
     } catch (error) {
       failed += 1;
       githubProfiles[owner] = {
@@ -135,10 +137,11 @@ async function main() {
     github_profiles: githubProfiles,
     github_meta: {
       total_owners: owners.length,
-      profiles_available: Object.keys(githubProfiles).length,
+      profiles_available: Object.values(githubProfiles).filter((profile) => profile?.exists !== false && !profile?.error).length,
       fetched: Object.keys(githubProfiles).length,
       from_cache: 0,
       failed,
+      not_found: notFound,
       limit_hit: false,
       authenticated: Boolean(GITHUB_TOKEN),
       generated_by: "github-actions"

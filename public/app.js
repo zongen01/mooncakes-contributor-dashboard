@@ -59,36 +59,81 @@ function cleanCompany(company) {
   return String(company || "").replace(/^@+/, "").trim();
 }
 
-function normalizeLocation(location) {
-  const raw = String(location || "").trim();
-  if (!raw) return "未填写";
-  const lower = raw.toLowerCase();
-  if (/(china|beijing|shanghai|shenzhen|hangzhou|guangzhou|nanjing|chengdu|wuhan|xian|xi'an|中国|北京|上海|深圳|杭州|广州|南京|成都|武汉|西安)/.test(lower)) return "中国";
-  if (/(japan|tokyo|osaka|kyoto|日本|東京|东京)/.test(lower)) return "日本";
-  if (/(singapore|新加坡)/.test(lower)) return "新加坡";
-  if (/(united states|usa|u\.s\.|california|san francisco|new york|seattle|boston|austin|美国)/.test(lower)) return "美国";
-  if (/(canada|toronto|vancouver|加拿大)/.test(lower)) return "加拿大";
-  if (/(germany|berlin|munich|deutschland|德国)/.test(lower)) return "德国";
-  if (/(france|paris|法国)/.test(lower)) return "法国";
-  if (/(united kingdom|uk|london|england|英国)/.test(lower)) return "英国";
-  if (/(india|bangalore|印度)/.test(lower)) return "印度";
-  if (/(taiwan|taipei|台湾|台北)/.test(lower)) return "中国台湾";
-  if (/(hong kong|香港)/.test(lower)) return "中国香港";
-  return raw.split(",").map((part) => part.trim()).filter(Boolean).at(-1) || raw;
+function hasUsableProfile(profile) {
+  return Boolean(profile && profile.exists !== false && !profile.error);
 }
 
-function identityFor(profile, person) {
+const UNKNOWN_LOCATION = "未公开/不可判定";
+
+function normalizeLocation(location) {
+  const raw = String(location || "").trim();
+  if (!raw) return UNKNOWN_LOCATION;
+  const lower = raw
+    .toLowerCase()
+    .replace(/[，、|/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^(earth|world|global|internet|your computer|your heart|location|r|ua|gmt ?[+-]?\d+|utc ?[+-]?\d+|127\.0\.0\.1|localhost|overworld|complex manifold|the peach blossom spring|as16-.+)$/i.test(lower)) {
+    return UNKNOWN_LOCATION;
+  }
+  if (/^(miraland|璃月港|阿宅专属宿舍|『.*』)$/.test(raw)) return UNKNOWN_LOCATION;
+  if (/\b(prc|china|beijing|shanghai|shenzhen|hangzhou|guangzhou|nanjing|chengdu|wuhan|xian|xi'an|chongqing|tianjin|zhuhai|hefei|urumqi|xinjiang|guangxi|guangdong|zhejiang|jiangsu|jiangxi|henan|liaoning|shenyang|dalian|xiamen|quanzhou|lanzhou|nanchang|changzhou|shihezi)\b/.test(lower) || /中国|北京|上海|深圳|杭州|广州|南京|成都|武汉|西安|重庆|天津|珠海|合肥|新疆|广西|广东|浙江|江苏|江西|河南|辽宁|沈阳|大连|厦门|泉州|兰州|南昌|常州|石河子/.test(raw)) return "中国";
+  if (/\b(japan|tokyo|osaka|kyoto|yokohama|saitama|iwate|fukuoka)\b/.test(lower) || /日本|東京|东京|大阪|京都|横滨/.test(raw)) return "日本";
+  if (/\b(singapore)\b/.test(lower) || /新加坡/.test(raw)) return "新加坡";
+  if (/\b(united states|usa|u\.s\.|california|san francisco|new york|nyc|seattle|boston|austin|orlando|berkeley|bay area|pittsburgh|new haven|macon)\b/.test(lower) || /\b(ca|ny|pa|ct|fl|ga)\b/.test(lower) || /美国/.test(raw)) return "美国";
+  if (/\b(canada|toronto|vancouver|ottawa)\b/.test(lower) || /\b(on|bc)\b/.test(lower) || /加拿大/.test(raw)) return "加拿大";
+  if (/\b(germany|berlin|munich|hamburg|deutschland)\b/.test(lower) || /德国/.test(raw)) return "德国";
+  if (/\b(france|paris|antibes)\b/.test(lower) || /法国/.test(raw)) return "法国";
+  if (/\b(united kingdom|uk|london|england|reading|bristol)\b/.test(lower) || /英国/.test(raw)) return "英国";
+  if (/\b(india|bangalore)\b/.test(lower) || /印度/.test(raw)) return "印度";
+  if (/\b(taiwan|taipei)\b/.test(lower) || /台湾|台北/.test(raw)) return "中国台湾";
+  if (/\b(hong kong)\b/.test(lower) || /香港/.test(raw)) return "中国香港";
+  if (/\b(switzerland|zurich)\b/.test(lower)) return "瑞士";
+  if (/\b(italy|rome)\b/.test(lower)) return "意大利";
+  return "其他公开地区";
+}
+
+function inferIdentity(profile, person) {
+  if (!hasUsableProfile(profile)) {
+    return {
+      label: "GitHub 资料未覆盖",
+      confidence: 0,
+      evidence: ["GitHub API 未返回可用公开资料"]
+    };
+  }
   const company = cleanCompany(profile?.company);
-  const text = `${profile?.type || ""} ${company} ${profile?.bio || ""} ${person.owner} ${person.topKeywords?.map(([key]) => key).join(" ") || ""}`.toLowerCase();
-  if ((profile?.type || "").toLowerCase() === "organization" || /(community|foundation|org|team|lang|moonbit-community|moonbitlang)/.test(text)) return "组织/社区账号";
-  if (/(university|college|institute|school|lab|research|academy|大学|学院|研究|实验室)/.test(text)) return "高校/研究机构线索";
-  if (/(compiler|programming language|language|parser|tree-sitter|wasm|ffi|native|toolchain|pl\b)/.test(text)) return "语言/工具链开发者";
-  if (/(ai|llm|agent|machine learning|ml|model|openai|anthropic|genai)/.test(text)) return "AI/LLM 开发者";
-  if (/(game|graphics|canvas|svg|render|audio|engine|font|pdf)/.test(text)) return "图形/游戏/媒体开发者";
-  if (/(web|frontend|front-end|react|dom|css|http|server|browser|ui)/.test(text)) return "Web/前端/网络开发者";
-  if (company) return "公司/组织线索";
-  if (profile?.bio) return "个人开发者";
-  return "公开资料较少";
+  const profileText = `${profile?.name || ""} ${profile?.type || ""} ${company} ${profile?.bio || ""}`.toLowerCase();
+  const moduleText = `${person.topCategories?.map(([key]) => key).join(" ") || ""} ${person.topKeywords?.map(([key]) => key).join(" ") || ""}`.toLowerCase();
+  if ((profile?.type || "").toLowerCase() === "organization") {
+    return { label: "组织账号", confidence: 0.92, evidence: ["GitHub type=Organization"] };
+  }
+  if (/(university|college|institute|school|lab|research|academy|大学|学院|研究|实验室)/.test(profileText)) {
+    return { label: "高校/研究机构线索", confidence: 0.78, evidence: ["公开资料含学校/研究机构关键词"] };
+  }
+  if (/(compiler|programming language|language engineer|parser|tree-sitter|wasm|ffi|native|toolchain|\bpl\b)/.test(profileText)) {
+    return { label: "语言/工具链开发者", confidence: 0.72, evidence: ["公开 bio/company 含语言或工具链关键词"] };
+  }
+  if (/(ai|llm|agent|machine learning|openai|anthropic|genai)/.test(profileText)) {
+    return { label: "AI/LLM 开发者", confidence: 0.72, evidence: ["公开 bio/company 含 AI 关键词"] };
+  }
+  if (/(game|graphics|canvas|svg|render|audio|engine|font|pdf)/.test(profileText)) {
+    return { label: "图形/游戏/媒体开发者", confidence: 0.68, evidence: ["公开资料含图形/媒体关键词"] };
+  }
+  if (/(web|frontend|front-end|react|dom|css|http|server|browser|ui)/.test(profileText)) {
+    return { label: "Web/前端/网络开发者", confidence: 0.68, evidence: ["公开资料含 Web/前端关键词"] };
+  }
+  if (/(语言\/工具链|开发工具|工程化)/.test(moduleText)) {
+    return { label: "贡献方向：工具链/工程化", confidence: 0.52, evidence: ["根据模块关键词推断贡献方向"] };
+  }
+  if (/ai\/llm/.test(moduleText)) {
+    return { label: "贡献方向：AI/LLM", confidence: 0.52, evidence: ["根据模块关键词推断贡献方向"] };
+  }
+  if (/图形\/游戏\/媒体/.test(moduleText)) {
+    return { label: "贡献方向：图形/媒体", confidence: 0.5, evidence: ["根据模块关键词推断贡献方向"] };
+  }
+  if (company) return { label: "有组织归属线索", confidence: 0.56, evidence: ["公开 company 已填写"] };
+  if (profile?.bio) return { label: "个人开发者", confidence: 0.48, evidence: ["公开 bio 已填写，但缺少明确方向"] };
+  return { label: "公开资料较少", confidence: 0.24, evidence: ["GitHub 公开资料字段较少"] };
 }
 
 function newcomerActionFor(person) {
@@ -98,12 +143,14 @@ function newcomerActionFor(person) {
   if (person.identity === "语言/工具链开发者") return "适合邀请参与工具链/基础库专题";
   if (person.identity === "AI/LLM 开发者") return "适合追踪 AI 原生案例";
   if (person.identity === "高校/研究机构线索") return "适合纳入校园/研究者触达";
-  if (person.identity === "公开资料较少" || person.signals.includes("身份线索少")) return "先观察模块质量，补充公开信息线索";
+  if (person.identity.startsWith("贡献方向：")) return "先按模块方向观察，避免过度判断个人身份";
+  if (person.identity === "公开资料较少" || person.identity === "GitHub 资料未覆盖" || person.signals.includes("身份线索少")) return "先观察模块质量，补充公开信息线索";
   return "加入新增贡献者观察名单";
 }
 
 function buildContributorPortrait(person, snapshotDate) {
   const profile = person.profile;
+  const usableProfile = hasUsableProfile(profile);
   const accountAgeDays = profile?.created_at ? daysBetween(dayKey(profile.created_at), snapshotDate) : null;
   const activeSpanDays = daysBetween(person.first, person.last);
   const repoRatio = person.count ? person.repoCount / person.count : 0;
@@ -115,22 +162,22 @@ function buildContributorPortrait(person, snapshotDate) {
     profile?.blog,
     profile?.twitter_username
   ];
-  const profileScore = profile ? profileFields.filter(Boolean).length / profileFields.length : 0;
+  const profileScore = usableProfile ? profileFields.filter(Boolean).length / profileFields.length : 0;
   const followers = profile?.followers || 0;
   const publicRepos = profile?.public_repos || 0;
   const primaryCategory = person.topCategories?.[0]?.[0] || "通用/实验";
-  const confidenceParts = [
-    Boolean(profile),
-    Boolean(profile?.bio),
-    Boolean(profile?.location),
-    Boolean(profile?.company),
-    person.count >= 2,
-    repoRatio >= 0.6
-  ];
-  const confidence = confidenceParts.filter(Boolean).length / confidenceParts.length;
+  const hasReliableLocation = person.location && person.location !== UNKNOWN_LOCATION;
+  const confidenceRaw =
+    (usableProfile ? 0.2 : 0) +
+    ((profile?.bio || profile?.company) ? 0.18 : 0) +
+    (hasReliableLocation ? 0.14 : 0) +
+    (person.count >= 2 ? 0.14 : 0) +
+    (repoRatio >= 0.6 ? 0.14 : 0) +
+    ((person.identityConfidence || 0) * 0.2);
+  const confidence = Math.min(0.95, confidenceRaw);
 
   let accountAgeLabel = "GitHub 资历未知";
-  if (accountAgeDays !== null) {
+  if (usableProfile && accountAgeDays !== null) {
     if (accountAgeDays >= 3650) accountAgeLabel = "10 年以上 GitHub 老用户";
     else if (accountAgeDays >= 1825) accountAgeLabel = "5 年以上 GitHub 用户";
     else if (accountAgeDays >= 730) accountAgeLabel = "2 年以上 GitHub 用户";
@@ -158,17 +205,17 @@ function buildContributorPortrait(person, snapshotDate) {
   else if (profileScore >= 0.35) profileLabel = "公开资料中等";
 
   let priority = "P2";
-  let priorityReason = "先观察模块质量和后续复投";
+  let priorityReason = "先观察模块质量、公开资料和后续复投";
   if (
     person.count >= 5 ||
-    followers >= 200 ||
+    (usableProfile && followers >= 200) ||
     (person.count >= 3 && repoRatio >= 0.6) ||
-    ["语言/工具链开发者", "AI/LLM 开发者", "高校/研究机构线索"].includes(person.identity)
+    (person.identityConfidence >= 0.68 && ["语言/工具链开发者", "AI/LLM 开发者", "高校/研究机构线索"].includes(person.identity))
   ) {
     priority = "P1";
-    priorityReason = "有明确方向或可触达线索";
+    priorityReason = "有较明确公开线索或复投迹象";
   }
-  if (person.count >= 10 || followers >= 1000 || (person.recent30 >= 5 && repoRatio >= 0.8)) {
+  if (person.count >= 10 || (usableProfile && followers >= 1000) || (person.recent30 >= 5 && repoRatio >= 0.8)) {
     priority = "P0";
     priorityReason = "高产或高影响力，值得重点跟进";
   }
@@ -187,7 +234,8 @@ function buildContributorPortrait(person, snapshotDate) {
     profileScore,
     followers,
     publicRepos,
-    activeSpanDays
+    activeSpanDays,
+    evidence: person.identityEvidence || []
   };
 }
 
@@ -206,7 +254,14 @@ function analyze(snapshot) {
   const modules = snapshot.modules || [];
   const stats = snapshot.statistics || {};
   const githubProfiles = snapshot.github_profiles || {};
-  const githubMeta = snapshot.github_meta || {};
+  const rawGithubMeta = snapshot.github_meta || {};
+  const githubProfileAvailable = Object.values(githubProfiles).filter(hasUsableProfile).length;
+  const githubMeta = {
+    ...rawGithubMeta,
+    profiles_available: githubProfileAvailable,
+    requested: Object.keys(githubProfiles).length,
+    invalid_profiles: Object.values(githubProfiles).filter((profile) => profile && !hasUsableProfile(profile)).length
+  };
   const owners = new Map();
   const daily = new Map();
   const categories = {};
@@ -279,9 +334,11 @@ function analyze(snapshot) {
   const contributors = Array.from(owners.values()).map((person) => {
     const topCategories = topEntries(person.categories, 3);
     const topKeywords = topEntries(person.keywords, 5);
-    const profile = githubProfiles[person.owner] || null;
+    const rawProfile = githubProfiles[person.owner] || null;
+    const profile = hasUsableProfile(rawProfile) ? rawProfile : null;
     const location = normalizeLocation(profile?.location);
-    const identity = identityFor(profile, { ...person, topKeywords });
+    const identityInfo = inferIdentity(profile, { ...person, topCategories, topKeywords });
+    const identity = identityInfo.label;
     const signals = [];
     if (person.count >= 20) signals.push("核心高产");
     if (person.recent30 >= 5) signals.push("近期活跃");
@@ -289,21 +346,34 @@ function analyze(snapshot) {
     if (person.repoMissing / person.count >= 0.5) signals.push("仓库缺失偏高");
     if (daysBetween(person.last, snapshot.date) >= 180) signals.push("可能沉寂");
     if (!profile) signals.push("GitHub 未覆盖");
-    if (profile && !profile.location) signals.push("地区未填写");
+    if (profile && location === UNKNOWN_LOCATION) signals.push("地区不可判定");
     if (profile && !profile.company && !profile.bio) signals.push("身份线索少");
     if (profile) {
-      locations[location] = (locations[location] || 0) + 1;
+      if (location !== UNKNOWN_LOCATION) locations[location] = (locations[location] || 0) + 1;
       identities[identity] = (identities[identity] || 0) + 1;
     }
     const portrait = buildContributorPortrait(
-      { ...person, profile, location, identity, topCategories, topKeywords, signals },
+      {
+        ...person,
+        profile,
+        location,
+        identity,
+        identityConfidence: identityInfo.confidence,
+        identityEvidence: identityInfo.evidence,
+        topCategories,
+        topKeywords,
+        signals
+      },
       snapshot.date
     );
     return {
       ...person,
       profile,
+      rawProfile,
       location,
       identity,
+      identityConfidence: identityInfo.confidence,
+      identityEvidence: identityInfo.evidence,
       portrait,
       topCategories,
       topKeywords,
@@ -397,15 +467,19 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   const locations = {};
   const identities = {};
   const categories = {};
+  let withProfile = 0;
   let withLocation = 0;
   let withCompany = 0;
+  let highConfidence = 0;
   let singleModule = 0;
 
   for (const person of in30) {
-    locations[person.location] = (locations[person.location] || 0) + 1;
+    if (person.profile) withProfile += 1;
+    if (person.location !== UNKNOWN_LOCATION) locations[person.location] = (locations[person.location] || 0) + 1;
     identities[person.identity] = (identities[person.identity] || 0) + 1;
-    if (person.profile?.location) withLocation += 1;
-    if (person.profile?.company) withCompany += 1;
+    if (person.location !== UNKNOWN_LOCATION) withLocation += 1;
+    if (cleanCompany(person.profile?.company)) withCompany += 1;
+    if ((person.portrait?.confidence || 0) >= 0.66) highConfidence += 1;
     if (person.count === 1) singleModule += 1;
     for (const [category, count] of person.topCategories) {
       categories[category] = (categories[category] || 0) + count;
@@ -419,8 +493,10 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     locations,
     identities,
     categories,
+    withProfile,
     withLocation,
     withCompany,
+    highConfidence,
     singleModule
   };
 }
@@ -511,7 +587,7 @@ function renderSummary() {
     ["今日新增", fmtNumber((a.dailyRows.find((day) => day.date === s.date) || {}).count), `${s.date} 的模块 created_at`],
     ["近 30 天新增", fmtNumber(a.recent30Count), `${fmtNumber(a.active30Owners)} 个 owner 参与`],
     ["Top 10 占比", fmtPct(a.top10Count / total), `Top 20 占比 ${fmtPct(a.top20Count / total)}`],
-    ["GitHub 覆盖", fmtPct((a.githubMeta.profiles_available || 0) / ownerTotal), `${fmtNumber(a.githubMeta.profiles_available || 0)} / ${fmtNumber(ownerTotal)} 个 owner`]
+    ["GitHub 有效覆盖", fmtPct((a.githubMeta.profiles_available || 0) / ownerTotal), `${fmtNumber(a.githubMeta.profiles_available || 0)} / ${fmtNumber(ownerTotal)} 个 owner，请求 ${fmtNumber(a.githubMeta.requested || a.githubMeta.fetched || 0)} 个`]
   ];
   els.summaryGrid.innerHTML = metrics.map(([label, value, note]) => `
     <div class="metric">
@@ -606,10 +682,12 @@ function renderNewcomers() {
   const summary = [
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(newcomers.in7.length), `近 30 天新增 ${fmtNumber(in30.length)} 人`],
-    ["公开地区覆盖", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 人填写 location`],
-    ["组织线索覆盖", fmtPct(in30.length ? newcomers.withCompany / in30.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(in30.length)} 人填写 company`],
+    ["GitHub 资料覆盖", fmtPct(in30.length ? newcomers.withProfile / in30.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in30.length)} 个 owner 可用`],
+    ["可判定地区", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 个公开 location 可归类`],
+    ["高置信画像", fmtPct(in30.length ? newcomers.highConfidence / in30.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%`],
     ["一次性新增占比", fmtPct(in30.length ? newcomers.singleModule / in30.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
-    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"]
+    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"],
+    ["组织字段填写", fmtPct(in30.length ? newcomers.withCompany / in30.length : 0), `${fmtNumber(newcomers.withCompany)} 个 owner 填写 company`]
   ];
 
   els.newcomerSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -636,8 +714,8 @@ function renderNewcomers() {
           <div class="subtle">${person.profile?.name || "GitHub 名称未填写"}</div>
         </td>
         <td>${person.first}</td>
-        <td>${person.location}<div class="subtle">${cleanCompany(person.profile?.company) || "组织未填写"}</div></td>
-        <td><span class="tag hot">${person.identity}</span></td>
+        <td>${person.location}<div class="subtle">${person.profile?.location || "location 未公开"}</div><div class="subtle">${cleanCompany(person.profile?.company) || "组织未填写"}</div></td>
+        <td><span class="tag ${person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : ""}">${person.identity}</span><div class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</div></td>
         <td><strong>${fmtNumber(person.count)}</strong><div class="subtle">近 30 天 ${fmtNumber(person.recent30)}</div></td>
         <td class="subtle">${modules.join("、")}</td>
         <td>${renderPortraitDetails(person)}</td>
@@ -705,6 +783,7 @@ function renderPortraitDetails(person) {
   const portrait = person.portrait;
   if (!portrait) return `<span class="subtle">暂无画像</span>`;
   const confidenceClass = portrait.confidence >= 0.66 ? "hot" : portrait.confidence >= 0.42 ? "warn" : "risk";
+  const evidence = (portrait.evidence || []).slice(0, 2).join("；") || "仅按公开字段和模块元数据估算";
   return `
     <div class="portrait-cell">
       <div class="pill-row">
@@ -719,6 +798,7 @@ function renderPortraitDetails(person) {
         <div>${portrait.profileLabel}</div>
       </div>
       <div class="subtle">${portrait.priorityReason}</div>
+      <div class="evidence-line">${evidence}</div>
     </div>
   `;
 }
@@ -754,7 +834,7 @@ function renderContributors() {
         <td>${person.last}</td>
         <td>${fmtNumber(person.recent30)} / 30 天</td>
         <td>${category}<div class="subtle">${person.topKeywords.map(([key]) => key).join("、")}</div></td>
-        <td><span class="tag hot">${person.identity}</span><div class="subtle">${person.location}</div></td>
+        <td><span class="tag ${person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : ""}">${person.identity}</span><div class="subtle">${person.location}</div><div class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</div></td>
         <td>${renderPortraitDetails(person)}</td>
         <td><div class="pill-row">${tags.map((tag) => `<span class="tag ${tag.includes("缺失") || tag.includes("沉寂") ? "risk" : tag.includes("活跃") || tag.includes("核心") ? "hot" : "warn"}">${tag}</span>`).join("")}</div></td>
         <td class="subtle">${modules.join("、")}</td>

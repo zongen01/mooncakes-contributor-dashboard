@@ -303,6 +303,13 @@ tr:last-child td {
   line-height: 1.35;
 }
 
+.evidence-line {
+  margin-top: 6px;
+  color: #51606b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .subtle {
   color: var(--muted);
 }
@@ -358,7 +365,7 @@ tr:last-child td {
 
 .newcomer-summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
