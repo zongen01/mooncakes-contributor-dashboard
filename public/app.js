@@ -729,15 +729,16 @@ function renderNewcomers() {
   const topCategory = topEntries(newcomers.categories, 1)[0];
   const aiMeta = state.analysis.aiMeta || {};
   const summary = [
+    ["统计窗口", "近 7 天", `本区所有占比的分母都是近 7 天新增 owner：${fmtNumber(in7.length)} 人`],
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(in7.length), `近 7 天首次出现的 owner`],
     ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in7.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
     ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
     ["近7天可判定地区人数", fmtPct(in7.length ? newcomers.withLocation / in7.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in7.length)} 个新增 owner 的公开 location 可归类`],
-    ["高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
-    ["一次性新增占比", fmtPct(in7.length ? newcomers.singleModule / in7.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
-    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 7 天暂无新增人员"],
-    ["组织字段填写", fmtPct(in7.length ? newcomers.withCompany / in7.length : 0), `${fmtNumber(newcomers.withCompany)} 个 owner 填写 company`]
+    ["近7天高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} / ${fmtNumber(in7.length)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
+    ["近7天一次性新增占比", fmtPct(in7.length ? newcomers.singleModule / in7.length : 0), `${fmtNumber(newcomers.singleModule)} / ${fmtNumber(in7.length)} 人目前只发 1 个模块`],
+    ["近7天新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `近 7 天新增 owner 模块中 ${fmtNumber(topCategory[1])} 个命中` : "近 7 天暂无新增人员"],
+    ["近7天组织字段填写", fmtPct(in7.length ? newcomers.withCompany / in7.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(in7.length)} 个 owner 填写 company`]
   ];
 
   els.newcomerSummary.innerHTML = summary.map(([label, value, note]) => `
