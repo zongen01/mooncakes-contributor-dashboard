@@ -612,12 +612,12 @@ function renderSummary() {
   const total = a.modules.length || 1;
   const ownerTotal = a.contributors.length || 1;
   const metrics = [
-    ["总模块", fmtNumber(a.modules.length), `mooncakes 统计接口：${fmtNumber(a.stats.total_packages)} packages`],
     ["贡献者 owner", fmtNumber(a.contributors.length), `${fmtNumber(a.singleOwners)} 个只发 1 个模块`],
-    ["今日新增", fmtNumber((a.dailyRows.find((day) => day.date === s.date) || {}).count), `${s.date} 的模块 created_at`],
-    ["近 30 天新增", fmtNumber(a.recent30Count), `${fmtNumber(a.active30Owners)} 个 owner 参与`],
+    ["近30天新增 owner", fmtNumber(a.newcomers.in30.length), `近 7 天新增 ${fmtNumber(a.newcomers.in7.length)} 个 owner`],
+    ["今日新增 owner", fmtNumber(a.newcomers.today.length), `${s.date} 首次出现的 owner`],
+    ["GitHub 有效覆盖", fmtPct((a.githubMeta.profiles_available || 0) / ownerTotal), `${fmtNumber(a.githubMeta.profiles_available || 0)} / ${fmtNumber(ownerTotal)} 个 owner，请求 ${fmtNumber(a.githubMeta.requested || a.githubMeta.fetched || 0)} 个`],
     ["Top 10 占比", fmtPct(a.top10Count / total), `Top 20 占比 ${fmtPct(a.top20Count / total)}`],
-    ["GitHub 有效覆盖", fmtPct((a.githubMeta.profiles_available || 0) / ownerTotal), `${fmtNumber(a.githubMeta.profiles_available || 0)} / ${fmtNumber(ownerTotal)} 个 owner，请求 ${fmtNumber(a.githubMeta.requested || a.githubMeta.fetched || 0)} 个`]
+    ["一次性贡献者", fmtPct(a.singleOwners / ownerTotal), `${fmtNumber(a.singleOwners)} 个 owner 目前只发 1 个模块`]
   ];
   els.summaryGrid.innerHTML = metrics.map(([label, value, note]) => `
     <div class="metric">

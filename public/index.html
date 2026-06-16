@@ -22,47 +22,6 @@
       <section class="summary-grid" id="summaryGrid" aria-live="polite"></section>
 
       <section class="dashboard-grid">
-        <article class="panel span-8">
-          <div class="panel-head">
-            <div>
-              <h2>每天新增模块</h2>
-              <p>按模块 `created_at` 统计，显示最近 45 天。</p>
-            </div>
-            <select id="rangeSelect" aria-label="选择日期范围">
-              <option value="30">最近 30 天</option>
-              <option value="45" selected>最近 45 天</option>
-              <option value="90">最近 90 天</option>
-              <option value="all">全部</option>
-            </select>
-          </div>
-          <div class="chart-wrap">
-            <canvas id="dailyChart" height="260"></canvas>
-          </div>
-          <div class="table-wrap compact">
-            <table>
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>新增模块</th>
-                  <th>新增 owner</th>
-                  <th>代表模块</th>
-                </tr>
-              </thead>
-              <tbody id="dailyRows"></tbody>
-            </table>
-          </div>
-        </article>
-
-        <article class="panel span-4">
-          <div class="panel-head">
-            <div>
-              <h2>问题信号</h2>
-              <p>自动从集中度、长尾、透明度、增速里找异常。</p>
-            </div>
-          </div>
-          <div id="issueList" class="issue-list"></div>
-        </article>
-
         <article class="panel span-12">
           <div class="panel-head">
             <div>
@@ -115,16 +74,6 @@
         <article class="panel span-6">
           <div class="panel-head">
             <div>
-              <h2>主题分布</h2>
-              <p>由关键词和描述粗分，用来看生态缺口。</p>
-            </div>
-          </div>
-          <div id="categoryList" class="bar-list"></div>
-        </article>
-
-        <article class="panel span-6">
-          <div class="panel-head">
-            <div>
               <h2>GitHub 地区分布</h2>
               <p>只统计公开填写 location 的 GitHub 主页。</p>
             </div>
@@ -169,6 +118,57 @@
               <tbody id="contributorRows"></tbody>
             </table>
           </div>
+        </article>
+
+        <article class="panel span-4">
+          <div class="panel-head">
+            <div>
+              <h2>问题信号</h2>
+              <p>从贡献者集中度、长尾留存、透明度和新增节奏里找异常。</p>
+            </div>
+          </div>
+          <div id="issueList" class="issue-list"></div>
+        </article>
+
+        <article class="panel span-8">
+          <div class="panel-head">
+            <div>
+              <h2>每天新增模块</h2>
+              <p>按模块 `created_at` 统计，作为贡献者活跃度的补充证据。</p>
+            </div>
+            <select id="rangeSelect" aria-label="选择日期范围">
+              <option value="30">最近 30 天</option>
+              <option value="45" selected>最近 45 天</option>
+              <option value="90">最近 90 天</option>
+              <option value="all">全部</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="dailyChart" height="260"></canvas>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>新增模块</th>
+                  <th>新增 owner</th>
+                  <th>代表模块</th>
+                </tr>
+              </thead>
+              <tbody id="dailyRows"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-12">
+          <div class="panel-head">
+            <div>
+              <h2>模块主题分布</h2>
+              <p>由关键词和描述粗分，用来辅助判断贡献者方向和生态缺口。</p>
+            </div>
+          </div>
+          <div id="categoryList" class="bar-list"></div>
         </article>
       </section>
     </main>
