@@ -1,9 +1,11 @@
 const state = {
   snapshot: null,
   analysis: null,
-  range: "45",
+  range: "7",
   search: ""
 };
+
+const ANALYSIS_DAYS = 7;
 
 const els = {
   statusPill: document.querySelector("#statusPill"),
@@ -145,7 +147,7 @@ function newcomerActionFor(person) {
   if (hasAiPortrait(person.aiPortrait) && person.aiPortrait.suggested_action) return `AI建议：${person.aiPortrait.suggested_action}`;
   if (person.portrait?.priority === "P0") return "重点跟进：可邀约交流、案例共创或社区专题";
   if (person.portrait?.priority === "P1") return "优先观察：适合加入新增贡献者名单并轻触达";
-  if (person.count >= 3 || person.recent30 >= 3) return "优先关注，可邀约交流或案例复盘";
+  if (person.count >= 3 || person.recent7 >= 3) return "优先关注，可邀约交流或案例复盘";
   if (person.identity === "语言/工具链开发者") return "适合邀请参与工具链/基础库专题";
   if (person.identity === "AI/LLM 开发者") return "适合追踪 AI 原生案例";
   if (person.identity === "高校/研究机构线索") return "适合纳入校园/研究者触达";
@@ -200,7 +202,7 @@ function buildContributorPortrait(person, snapshotDate) {
   let paceLabel = "试水型贡献者";
   if (person.count >= 20) paceLabel = "核心高产贡献者";
   else if (person.count >= 5 && activeSpanDays >= 90) paceLabel = "持续贡献型";
-  else if (person.count >= 3 && person.recent30 / person.count >= 0.7) paceLabel = "近期集中爆发型";
+  else if (person.count >= 3 && person.recent7 / person.count >= 0.7) paceLabel = "近期集中爆发型";
   else if (person.count >= 2) paceLabel = "轻量复投型";
 
   let transparencyLabel = "仓库透明度偏低";
@@ -222,7 +224,7 @@ function buildContributorPortrait(person, snapshotDate) {
     priority = "P1";
     priorityReason = "有较明确公开线索或复投迹象";
   }
-  if (person.count >= 10 || (usableProfile && followers >= 1000) || (person.recent30 >= 5 && repoRatio >= 0.8)) {
+  if (person.count >= 10 || (usableProfile && followers >= 1000) || (person.recent7 >= 5 && repoRatio >= 0.8)) {
     priority = "P0";
     priorityReason = "高产或高影响力，值得重点跟进";
   }
@@ -295,7 +297,6 @@ function analyze(snapshot) {
         count: 0,
         first: "",
         last: "",
-        recent30: 0,
         recent7: 0,
         modules: [],
         keywords: {},
@@ -312,7 +313,6 @@ function analyze(snapshot) {
     person.last = !person.last || created > person.last ? created : person.last;
 
     const ageFromSnapshot = daysBetween(created, snapshot.date);
-    if (ageFromSnapshot <= 30) person.recent30 += 1;
     if (ageFromSnapshot <= 7) person.recent7 += 1;
 
     for (const keyword of module.keywords || []) {
@@ -358,7 +358,7 @@ function analyze(snapshot) {
     const identityConfidence = aiPortrait ? Math.max(identityInfo.confidence, Number(aiPortrait.confidence)) : identityInfo.confidence;
     const signals = [];
     if (person.count >= 20) signals.push("核心高产");
-    if (person.recent30 >= 5) signals.push("近期活跃");
+    if (person.recent7 >= 3) signals.push("近7天活跃");
     if (person.count === 1) signals.push("一次性贡献");
     if (person.repoMissing / person.count >= 0.5) signals.push("仓库缺失偏高");
     if (daysBetween(person.last, snapshot.date) >= 180) signals.push("可能沉寂");
@@ -420,22 +420,20 @@ function analyze(snapshot) {
         signals.join(" ")
       ].join(" ").toLowerCase()
     };
-  }).sort((a, b) => b.count - a.count || b.recent30 - a.recent30 || a.owner.localeCompare(b.owner));
+  }).sort((a, b) => b.recent7 - a.recent7 || b.count - a.count || a.owner.localeCompare(b.owner));
 
   const dailyRows = Array.from(daily.values())
     .map((day) => ({ ...day, ownerCount: day.owners.size }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const recent30 = dailyRows.filter((day) => daysBetween(day.date, snapshot.date) <= 30);
   const recent7 = dailyRows.filter((day) => daysBetween(day.date, snapshot.date) <= 7);
   const previous7 = dailyRows.filter((day) => {
     const age = daysBetween(day.date, snapshot.date);
     return age > 7 && age <= 14;
   });
-  const recent30Count = recent30.reduce((sum, day) => sum + day.count, 0);
   const recent7Count = recent7.reduce((sum, day) => sum + day.count, 0);
   const previous7Count = previous7.reduce((sum, day) => sum + day.count, 0);
-  const active30Owners = new Set(modules.filter((m) => daysBetween(dayKey(m.created_at), snapshot.date) <= 30).map((m) => ownerOf(m.name))).size;
+  const active7Owners = new Set(modules.filter((m) => daysBetween(dayKey(m.created_at), snapshot.date) <= ANALYSIS_DAYS).map((m) => ownerOf(m.name))).size;
   const singleOwners = contributors.filter((person) => person.count === 1).length;
   const top10Count = contributors.slice(0, 10).reduce((sum, person) => sum + person.count, 0);
   const top20Count = contributors.slice(0, 20).reduce((sum, person) => sum + person.count, 0);
@@ -450,8 +448,6 @@ function analyze(snapshot) {
     repoMissing,
     recent7Count,
     previous7Count,
-    recent30Count,
-    active30Owners,
     categories,
     githubMeta,
     snapshot
@@ -472,10 +468,9 @@ function analyze(snapshot) {
     aiMeta,
     githubMeta,
     repo: { missing: repoMissing, github: repoGithub, community: repoCommunity },
-    recent30Count,
     recent7Count,
     previous7Count,
-    active30Owners,
+    active7Owners,
     singleOwners,
     top10Count,
     top20Count,
@@ -484,11 +479,10 @@ function analyze(snapshot) {
 }
 
 function buildNewcomerAnalysis(contributors, snapshotDate) {
-  const in30 = contributors
-    .filter((person) => daysBetween(person.first, snapshotDate) <= 30)
+  const in7 = contributors
+    .filter((person) => daysBetween(person.first, snapshotDate) <= ANALYSIS_DAYS)
     .sort((a, b) => b.first.localeCompare(a.first) || b.count - a.count || a.owner.localeCompare(b.owner));
-  const in7 = in30.filter((person) => daysBetween(person.first, snapshotDate) <= 7);
-  const today = in30.filter((person) => person.first === snapshotDate);
+  const today = in7.filter((person) => person.first === snapshotDate);
   const locations = {};
   const identities = {};
   const categories = {};
@@ -500,7 +494,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   let highConfidenceAi = 0;
   let singleModule = 0;
 
-  for (const person of in30) {
+  for (const person of in7) {
     if (person.profile) withProfile += 1;
     if (person.aiPortrait) withAi += 1;
     if (person.location !== UNKNOWN_LOCATION) locations[person.location] = (locations[person.location] || 0) + 1;
@@ -516,7 +510,6 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   }
 
   return {
-    in30,
     in7,
     today,
     locations,
@@ -533,35 +526,48 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
 }
 
 function buildIssues(context) {
-  const total = context.modules.length || 1;
-  const ownerTotal = context.contributors.length || 1;
+  const recentModules = context.modules.filter((module) => daysBetween(dayKey(module.created_at), context.snapshot.date) <= ANALYSIS_DAYS);
+  const recentContributors = context.contributors.filter((person) => person.recent7 > 0);
+  const total = recentModules.length || 1;
+  const ownerTotal = recentContributors.length || 1;
   const issues = [];
-  const top10Share = context.top10Count / total;
-  const singleShare = context.singleOwners / ownerTotal;
-  const missingRepoShare = context.repoMissing / total;
+  const top10Share = recentContributors
+    .slice()
+    .sort((left, right) => right.recent7 - left.recent7 || right.count - left.count)
+    .slice(0, 10)
+    .reduce((sum, person) => sum + person.recent7, 0) / total;
+  const singleOwners = recentContributors.filter((person) => person.count === 1).length;
+  const singleShare = singleOwners / ownerTotal;
+  const missingRepoCount = recentModules.filter((module) => !module.repository).length;
+  const missingRepoShare = missingRepoCount / total;
   const delta7 = context.previous7Count ? (context.recent7Count - context.previous7Count) / context.previous7Count : 0;
-  const aiShare = (context.categories["AI/LLM"] || 0) / total;
-  const githubCoverage = (context.githubMeta?.profiles_available || 0) / ownerTotal;
+  const recentCategories = {};
+  for (const module of recentModules) {
+    const category = categoryFor(module);
+    recentCategories[category] = (recentCategories[category] || 0) + 1;
+  }
+  const aiShare = (recentCategories["AI/LLM"] || 0) / total;
+  const githubCoverage = recentContributors.filter((person) => person.profile).length / ownerTotal;
 
   if (top10Share >= 0.4) {
     issues.push({
       severity: "high",
-      title: `头部集中度偏高：Top 10 贡献 ${fmtPct(top10Share)}`,
-      body: "生态增长高度依赖少数高产 owner。适合重点维护头部关系，同时用专题激励腰部贡献者。"
+      title: `近 7 天头部集中度偏高：Top 10 贡献 ${fmtPct(top10Share)}`,
+      body: "短期增长高度依赖少数高产 owner。适合重点维护头部关系，同时追踪是否能带动更多复投。"
     });
   }
   if (singleShare >= 0.5) {
     issues.push({
       severity: "medium",
-      title: `长尾留存压力：${context.singleOwners} 个 owner 只发 1 个模块`,
-      body: "入口吸引力不错，但二次贡献不足。可以补发布模板、包质量反馈、每周推荐来推动复投。"
+      title: `近 7 天首发留存压力：${singleOwners} 个活跃 owner 目前只发 1 个模块`,
+      body: "短期新增里首发占比较高。可以补发布模板、包质量反馈、每周推荐来推动复投。"
     });
   }
   if (missingRepoShare >= 0.18) {
     issues.push({
       severity: "medium",
-      title: `透明度缺口：${fmtNumber(context.repoMissing)} 个模块未填写 repository`,
-      body: "缺仓库链接会影响信任、复用和协作。建议把 repository 完整率作为包质量指标。"
+      title: `近 7 天透明度缺口：${fmtNumber(missingRepoCount)} 个新增模块未填写 repository`,
+      body: "缺仓库链接会影响信任、复用和协作。建议把近 7 天新增包的 repository 完整率作为质量指标。"
     });
   }
   if (delta7 < -0.25) {
@@ -580,15 +586,15 @@ function buildIssues(context) {
   if (aiShare < 0.08) {
     issues.push({
       severity: "low",
-      title: `AI/LLM 相关占比 ${fmtPct(aiShare)}，还不是主赛道`,
-      body: "如果要强调 AI 原生生态，需要更多 agent、SDK、评测、工具调用类包作为证据。"
+      title: `近 7 天 AI/LLM 相关占比 ${fmtPct(aiShare)}，还不是主赛道`,
+      body: "如果要强调 AI 原生生态，需要更多 agent、SDK、评测、工具调用类包作为短期新增证据。"
     });
   }
   if (githubCoverage > 0 && githubCoverage < 0.8) {
     issues.push({
       severity: "low",
-      title: `GitHub 画像覆盖 ${fmtPct(githubCoverage)}，还有缺口`,
-      body: "未配置 GITHUB_TOKEN 时会受 GitHub API 限制。可以先看头部贡献者，配置 token 后再做全量画像。"
+      title: `近 7 天 GitHub 画像覆盖 ${fmtPct(githubCoverage)}，还有缺口`,
+      body: "未配置 GITHUB_TOKEN 时会受 GitHub API 限制。可以先看近 7 天活跃贡献者，配置 token 后再做全量画像。"
     });
   }
   return issues.slice(0, 6);
@@ -610,15 +616,23 @@ function render() {
 function renderSummary() {
   const a = state.analysis;
   const s = state.snapshot;
-  const total = a.modules.length || 1;
-  const ownerTotal = a.contributors.length || 1;
+  const active7 = a.contributors.filter((person) => person.recent7 > 0);
+  const active7Total = active7.length || 1;
+  const recent7ModuleTotal = a.recent7Count || 1;
+  const recent7Top10 = active7
+    .slice()
+    .sort((left, right) => right.recent7 - left.recent7 || right.count - left.count)
+    .slice(0, 10)
+    .reduce((sum, person) => sum + person.recent7, 0);
+  const active7Github = active7.filter((person) => person.profile).length;
+  const active7Single = active7.filter((person) => person.count === 1).length;
   const metrics = [
-    ["贡献者 owner", fmtNumber(a.contributors.length), `${fmtNumber(a.singleOwners)} 个只发 1 个模块`],
-    ["近30天新增 owner", fmtNumber(a.newcomers.in30.length), `近 7 天新增 ${fmtNumber(a.newcomers.in7.length)} 个 owner`],
+    ["近7天活跃 owner", fmtNumber(active7.length), `近 7 天新增 ${fmtNumber(a.recent7Count)} 个模块`],
+    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), "首次发布模块的 owner"],
     ["今日新增 owner", fmtNumber(a.newcomers.today.length), `${s.date} 首次出现的 owner`],
-    ["GitHub 有效覆盖", fmtPct((a.githubMeta.profiles_available || 0) / ownerTotal), `${fmtNumber(a.githubMeta.profiles_available || 0)} / ${fmtNumber(ownerTotal)} 个 owner，请求 ${fmtNumber(a.githubMeta.requested || a.githubMeta.fetched || 0)} 个`],
-    ["Top 10 占比", fmtPct(a.top10Count / total), `Top 20 占比 ${fmtPct(a.top20Count / total)}`],
-    ["一次性贡献者", fmtPct(a.singleOwners / ownerTotal), `${fmtNumber(a.singleOwners)} 个 owner 目前只发 1 个模块`]
+    ["近7天 GitHub 覆盖", fmtPct(active7Github / active7Total), `${fmtNumber(active7Github)} / ${fmtNumber(active7.length)} 个活跃 owner 可用`],
+    ["近7天 Top10 占比", fmtPct(recent7Top10 / recent7ModuleTotal), `Top 10 贡献 ${fmtNumber(recent7Top10)} 个近 7 天新增模块`],
+    ["近7天一次性贡献", fmtPct(active7Single / active7Total), `${fmtNumber(active7Single)} 个活跃 owner 目前只发 1 个模块`]
   ];
   els.summaryGrid.innerHTML = metrics.map(([label, value, note]) => `
     <div class="metric">
@@ -635,7 +649,7 @@ function selectedDailyRows() {
   const rows = state.analysis.dailyRows;
   if (state.range === "all") return rows;
   const limit = Number(state.range);
-  return rows.filter((day) => daysBetween(day.date, state.snapshot.date) < limit);
+  return rows.filter((day) => daysBetween(day.date, state.snapshot.date) <= limit);
 }
 
 function renderDaily() {
@@ -708,19 +722,19 @@ function renderIssues() {
 
 function renderNewcomers() {
   const newcomers = state.analysis.newcomers;
-  const in30 = newcomers.in30;
+  const in7 = newcomers.in7;
   const topCategory = topEntries(newcomers.categories, 1)[0];
   const aiMeta = state.analysis.aiMeta || {};
   const summary = [
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
-    ["近 7 天新增人员", fmtNumber(newcomers.in7.length), `近 30 天新增 ${fmtNumber(in30.length)} 人`],
-    ["近30天 AI 画像覆盖", fmtPct(in30.length ? newcomers.withAi / in30.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in30.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
-    ["近30天 GitHub 资料覆盖", fmtPct(in30.length ? newcomers.withProfile / in30.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in30.length)} 个新增 owner 可用`],
-    ["近30天可判定地区人数", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 个新增 owner 的公开 location 可归类`],
-    ["高置信画像", fmtPct(in30.length ? newcomers.highConfidence / in30.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
-    ["一次性新增占比", fmtPct(in30.length ? newcomers.singleModule / in30.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
-    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"],
-    ["组织字段填写", fmtPct(in30.length ? newcomers.withCompany / in30.length : 0), `${fmtNumber(newcomers.withCompany)} 个 owner 填写 company`]
+    ["近 7 天新增人员", fmtNumber(in7.length), `近 7 天首次出现的 owner`],
+    ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in7.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
+    ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
+    ["近7天可判定地区人数", fmtPct(in7.length ? newcomers.withLocation / in7.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in7.length)} 个新增 owner 的公开 location 可归类`],
+    ["高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
+    ["一次性新增占比", fmtPct(in7.length ? newcomers.singleModule / in7.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
+    ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 7 天暂无新增人员"],
+    ["组织字段填写", fmtPct(in7.length ? newcomers.withCompany / in7.length : 0), `${fmtNumber(newcomers.withCompany)} 个 owner 填写 company`]
   ];
 
   els.newcomerSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -734,32 +748,38 @@ function renderNewcomers() {
   renderBarList(els.newcomerLocationList, newcomers.locations, 8);
   renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
 
-  els.newcomerRows.innerHTML = in30.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
+  els.newcomerRows.innerHTML = in7.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
 
-  if (!in30.length) {
-    els.newcomerRows.innerHTML = `<div class="loading">近 30 天暂无首次出现的新增 owner。</div>`;
+  if (!in7.length) {
+    els.newcomerRows.innerHTML = `<div class="loading">近 7 天暂无首次出现的新增 owner。</div>`;
   }
 }
 
 function renderTiers() {
-  const contributors = state.analysis.contributors;
+  const contributors = state.analysis.contributors.filter((person) => person.recent7 > 0);
   const tiers = [
-    ["核心高产", contributors.filter((person) => person.count >= 20), "20 个以上模块，适合重点维护、访谈、专题扩散。"],
-    ["稳定腰部", contributors.filter((person) => person.count >= 5 && person.count < 20), "5-19 个模块，是生态扩张和复投的关键人群。"],
-    ["轻量贡献", contributors.filter((person) => person.count >= 2 && person.count < 5), "已经完成二次贡献，适合用模板和反馈继续拉升。"],
-    ["一次性贡献", contributors.filter((person) => person.count === 1), "只发布 1 个模块，反映留存和持续贡献压力。"]
+    ["近7天高活跃", contributors.filter((person) => person.recent7 >= 5), "近 7 天新增 5 个以上模块，适合重点跟进和案例扩散。"],
+    ["近7天复投", contributors.filter((person) => person.recent7 >= 2 && person.recent7 < 5), "近 7 天新增 2-4 个模块，已经出现连续贡献迹象。"],
+    ["近7天轻量活跃", contributors.filter((person) => person.recent7 === 1 && person.count > 1), "近 7 天新增 1 个模块，但历史上不是第一次贡献。"],
+    ["近7天新增首发", contributors.filter((person) => person.recent7 === 1 && person.count === 1), "近 7 天首次发布 1 个模块，是新增转化和留存观察重点。"]
   ];
   els.tierList.innerHTML = tiers.map(([name, people, note]) => `
     <div class="tier-card">
       <strong>${name}：${fmtNumber(people.length)} 人</strong>
       <p>${note}</p>
-      <div class="pill-row">${people.slice(0, 10).map((person) => `<span class="tag">${person.owner}</span>`).join("")}</div>
+      <div class="pill-row">${people.slice(0, 10).map((person) => `<span class="tag">${person.owner} +${fmtNumber(person.recent7)}</span>`).join("")}</div>
     </div>
   `).join("");
 }
 
 function renderCategories() {
-  const entries = topEntries(state.analysis.categories, 12);
+  const categories = {};
+  for (const module of state.analysis.modules) {
+    if (daysBetween(dayKey(module.created_at), state.snapshot.date) > ANALYSIS_DAYS) continue;
+    const category = categoryFor(module);
+    categories[category] = (categories[category] || 0) + 1;
+  }
+  const entries = topEntries(categories, 12);
   const max = Math.max(1, ...entries.map(([, value]) => value));
   els.categoryList.innerHTML = entries.map(([name, value]) => `
     <div class="bar-item">
@@ -771,8 +791,15 @@ function renderCategories() {
 }
 
 function renderGithubPanels() {
-  renderBarList(els.locationList, state.analysis.locations, 12);
-  renderBarList(els.identityList, state.analysis.identities, 12);
+  const locations = {};
+  const identities = {};
+  for (const person of state.analysis.contributors) {
+    if (person.recent7 <= 0 || !person.profile) continue;
+    if (person.location !== UNKNOWN_LOCATION) locations[person.location] = (locations[person.location] || 0) + 1;
+    identities[person.identity] = (identities[person.identity] || 0) + 1;
+  }
+  renderBarList(els.locationList, locations, 12);
+  renderBarList(els.identityList, identities, 12);
 }
 
 function renderBarList(container, data, limit) {
@@ -884,7 +911,7 @@ function renderContributorCard(person, options = {}) {
 
       <div class="person-stats">
         <div><strong>${fmtNumber(person.count)}</strong><span>模块</span></div>
-        <div><strong>${fmtNumber(person.recent30)}</strong><span>近30天</span></div>
+        <div><strong>${fmtNumber(person.recent7)}</strong><span>近7天</span></div>
         <div><strong>${person.last}</strong><span>最近新增</span></div>
       </div>
 
@@ -923,13 +950,14 @@ function renderContributorCard(person, options = {}) {
 function renderContributors() {
   const query = state.search.trim().toLowerCase();
   const rows = state.analysis.contributors
+    .filter((person) => person.recent7 > 0)
     .filter((person) => !query || person.searchText.includes(query))
     .slice(0, 180);
 
   if (els.contributorCountNote) {
-    const total = state.analysis.contributors.length;
-    const matched = state.analysis.contributors.filter((person) => !query || person.searchText.includes(query)).length;
-    els.contributorCountNote.textContent = `当前显示 ${fmtNumber(rows.length)} / ${fmtNumber(matched)} 个匹配贡献者，共 ${fmtNumber(total)} 个 owner。支持筛选 owner、地区、组织、关键词、模块名和风险标签。`;
+    const active = state.analysis.contributors.filter((person) => person.recent7 > 0);
+    const matched = active.filter((person) => !query || person.searchText.includes(query)).length;
+    els.contributorCountNote.textContent = `当前显示 ${fmtNumber(rows.length)} / ${fmtNumber(matched)} 个匹配贡献者，共 ${fmtNumber(active.length)} 个近 7 天活跃 owner。支持筛选 owner、地区、组织、关键词、模块名和风险标签。`;
   }
 
   els.contributorRows.innerHTML = rows.length

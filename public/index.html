@@ -33,11 +33,11 @@
             <div class="newcomer-summary-grid" id="newcomerSummary"></div>
             <div class="newcomer-bars">
               <div>
-                <h3>近30天新增 owner 可判定地区</h3>
+                <h3>近7天新增 owner 可判定地区</h3>
                 <div id="newcomerLocationList" class="bar-list"></div>
               </div>
               <div>
-                <h3>近30天新增 owner 公开身份线索</h3>
+                <h3>近7天新增 owner 公开身份线索</h3>
                 <div id="newcomerIdentityList" class="bar-list"></div>
               </div>
             </div>
@@ -49,7 +49,7 @@
           <div class="panel-head">
             <div>
               <h2>贡献者分层</h2>
-              <p>按模块数量看核心、腰部和长尾。</p>
+              <p>按近 7 天新增模块数量看高活跃、复投和首发。</p>
             </div>
           </div>
           <div id="tierList" class="tier-list"></div>
@@ -59,7 +59,7 @@
           <div class="panel-head">
             <div>
               <h2>GitHub 地区分布</h2>
-              <p>只统计公开填写 location 的 GitHub 主页。</p>
+              <p>只统计近 7 天活跃 owner 中公开填写 location 的 GitHub 主页。</p>
             </div>
           </div>
           <div id="locationList" class="bar-list"></div>
@@ -69,7 +69,7 @@
           <div class="panel-head">
             <div>
               <h2>身份/组织线索</h2>
-              <p>根据公开 type、company、bio 和模块方向做非敏感线索判断。</p>
+              <p>根据近 7 天活跃 owner 的公开 type、company、bio 和模块方向判断。</p>
             </div>
           </div>
           <div id="identityList" class="bar-list"></div>
@@ -103,10 +103,7 @@
               <p>按模块 `created_at` 统计，作为贡献者活跃度的补充证据。</p>
             </div>
             <select id="rangeSelect" aria-label="选择日期范围">
-              <option value="30">最近 30 天</option>
-              <option value="45" selected>最近 45 天</option>
-              <option value="90">最近 90 天</option>
-              <option value="all">全部</option>
+              <option value="7" selected>最近 7 天</option>
             </select>
           </div>
           <div class="chart-wrap">
@@ -131,7 +128,7 @@
           <div class="panel-head">
             <div>
               <h2>模块主题分布</h2>
-              <p>由关键词和描述粗分，用来辅助判断贡献者方向和生态缺口。</p>
+              <p>按近 7 天新增模块的关键词和描述粗分，用来辅助判断贡献者方向和生态缺口。</p>
             </div>
           </div>
           <div id="categoryList" class="bar-list"></div>
