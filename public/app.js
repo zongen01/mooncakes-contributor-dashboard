@@ -500,7 +500,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   for (const person of in7) {
     if (person.profile) withProfile += 1;
     if (person.aiPortrait) withAi += 1;
-    if (person.location !== UNKNOWN_LOCATION) locations[person.location] = (locations[person.location] || 0) + 1;
+    locations[person.location] = (locations[person.location] || 0) + 1;
     identities[person.identity] = (identities[person.identity] || 0) + 1;
     if (person.location !== UNKNOWN_LOCATION) withLocation += 1;
     if (cleanCompany(person.profile?.company)) withCompany += 1;
