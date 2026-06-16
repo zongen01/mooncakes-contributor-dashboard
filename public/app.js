@@ -898,6 +898,58 @@ function renderContributorCard(person, options = {}) {
   const confidence = person.portrait?.confidence || 0;
   const confidenceClass = confidence >= 0.66 ? "hot" : confidence >= 0.42 ? "warn" : "risk";
 
+  if (!isNewcomer) {
+    return `
+      <article class="person-card compact-person-card">
+        <div class="person-card-head compact-card-head">
+          <div>
+            <div class="owner-title">
+              ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
+            </div>
+            <div class="subtle">${person.first} 至 ${person.last} · ${person.location}</div>
+          </div>
+          <div class="pill-row compact-pills">
+            <span class="tag ${priorityClass}">${person.portrait?.priority || "P2"}</span>
+            <span class="tag ${confidenceClass}">画像 ${fmtPct(confidence, 0)}</span>
+          </div>
+        </div>
+
+        <div class="compact-summary-row">
+          <strong>${fmtNumber(person.count)}</strong><span>模块</span>
+          <strong>${fmtNumber(person.recent7)}</strong><span>近7天</span>
+          <strong>${person.last}</strong><span>最近</span>
+        </div>
+
+        <div class="compact-line">
+          <span class="tag">${category}</span>
+          <span class="tag ${identityClass}">${person.identity}</span>
+          ${tags.slice(0, 3).map((tag) => `<span class="tag ${tagClassFor(tag)}">${tag}</span>`).join("")}
+        </div>
+
+        <div class="compact-modules subtle">${modules.join("、")}</div>
+
+        <details class="card-detail-toggle">
+          <summary>展开画像细节</summary>
+          <div class="person-body compact-detail-body">
+            <section>
+              <h3>公开资料</h3>
+              ${renderProfileSummary(person)}
+            </section>
+            <section>
+              <h3>方向与身份</h3>
+              <p class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</p>
+              <p class="subtle">${person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词"}</p>
+            </section>
+            <section class="full-row">
+              <h3>画像判断</h3>
+              ${renderPortraitDetails(person)}
+            </section>
+          </div>
+        </details>
+      </article>
+    `;
+  }
+
   return `
     <article class="person-card ${isNewcomer ? "newcomer-card" : ""}">
       <div class="person-card-head">

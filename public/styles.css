@@ -341,6 +341,10 @@ tr:last-child td {
   padding: 14px;
 }
 
+.compact-person-card {
+  padding: 12px;
+}
+
 .history-panel {
   margin-top: 14px;
   border: 1px solid #e2e9ee;
@@ -373,6 +377,10 @@ tr:last-child td {
   gap: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid #edf1f3;
+}
+
+.compact-card-head {
+  padding-bottom: 8px;
 }
 
 .owner-title {
@@ -414,6 +422,52 @@ tr:last-child td {
   margin-top: 4px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.compact-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, auto 1fr);
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 9px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.compact-summary-row strong {
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.compact-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.compact-modules {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.card-detail-toggle {
+  margin-top: 8px;
+  border-top: 1px solid #edf1f3;
+  padding-top: 7px;
+}
+
+.card-detail-toggle summary {
+  cursor: pointer;
+  color: #4b5863;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compact-detail-body {
+  margin-top: 10px;
 }
 
 .person-body {
