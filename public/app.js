@@ -713,9 +713,9 @@ function renderNewcomers() {
   const summary = [
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(newcomers.in7.length), `近 30 天新增 ${fmtNumber(in30.length)} 人`],
-    ["AI 画像覆盖", fmtPct(in30.length ? newcomers.withAi / in30.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in30.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
-    ["GitHub 资料覆盖", fmtPct(in30.length ? newcomers.withProfile / in30.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in30.length)} 个 owner 可用`],
-    ["可判定地区", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 个公开 location 可归类`],
+    ["近30天 AI 画像覆盖", fmtPct(in30.length ? newcomers.withAi / in30.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in30.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
+    ["近30天 GitHub 资料覆盖", fmtPct(in30.length ? newcomers.withProfile / in30.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in30.length)} 个新增 owner 可用`],
+    ["近30天可判定地区人数", fmtPct(in30.length ? newcomers.withLocation / in30.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in30.length)} 个新增 owner 的公开 location 可归类`],
     ["高置信画像", fmtPct(in30.length ? newcomers.highConfidence / in30.length : 0), `${fmtNumber(newcomers.highConfidence)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
     ["一次性新增占比", fmtPct(in30.length ? newcomers.singleModule / in30.length : 0), `${fmtNumber(newcomers.singleModule)} 人目前只发 1 个模块`],
     ["新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `${fmtNumber(topCategory[1])} 个模块命中` : "近 30 天暂无新增人员"],
