@@ -81,9 +81,13 @@
               <h2>贡献者画像表</h2>
               <p id="contributorCountNote">支持筛选 owner、地区、组织、关键词、模块名和风险标签。</p>
             </div>
-            <input id="searchInput" type="search" placeholder="搜索贡献者 / 地区 / 组织 / 关键词">
+            <input id="searchInput" type="search" placeholder="搜索全部贡献者 / 地区 / 组织 / 关键词">
           </div>
           <div class="portrait-grid" id="contributorRows"></div>
+          <details class="history-panel" id="olderContributorPanel">
+            <summary id="olderContributorSummary">7 天以外贡献者</summary>
+            <div class="portrait-grid history-grid" id="olderContributorRows"></div>
+          </details>
         </article>
 
         <article class="panel span-4">

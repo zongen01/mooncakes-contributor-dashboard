@@ -24,6 +24,9 @@ const els = {
   identityList: document.querySelector("#identityList"),
   contributorRows: document.querySelector("#contributorRows"),
   contributorCountNote: document.querySelector("#contributorCountNote"),
+  olderContributorPanel: document.querySelector("#olderContributorPanel"),
+  olderContributorSummary: document.querySelector("#olderContributorSummary"),
+  olderContributorRows: document.querySelector("#olderContributorRows"),
   rangeSelect: document.querySelector("#rangeSelect"),
   searchInput: document.querySelector("#searchInput")
 };
@@ -949,20 +952,34 @@ function renderContributorCard(person, options = {}) {
 
 function renderContributors() {
   const query = state.search.trim().toLowerCase();
-  const rows = state.analysis.contributors
-    .filter((person) => person.recent7 > 0)
-    .filter((person) => !query || person.searchText.includes(query))
-    .slice(0, 180);
+  const active = state.analysis.contributors.filter((person) => person.recent7 > 0);
+  const older = state.analysis.contributors.filter((person) => person.recent7 === 0);
+  const activeMatches = active.filter((person) => !query || person.searchText.includes(query));
+  const olderMatches = older.filter((person) => query && person.searchText.includes(query));
+  const activeRows = activeMatches.slice(0, 180);
+  const olderRows = olderMatches.slice(0, 120);
 
   if (els.contributorCountNote) {
-    const active = state.analysis.contributors.filter((person) => person.recent7 > 0);
-    const matched = active.filter((person) => !query || person.searchText.includes(query)).length;
-    els.contributorCountNote.textContent = `当前显示 ${fmtNumber(rows.length)} / ${fmtNumber(matched)} 个匹配贡献者，共 ${fmtNumber(active.length)} 个近 7 天活跃 owner。支持筛选 owner、地区、组织、关键词、模块名和风险标签。`;
+    if (query) {
+      els.contributorCountNote.textContent = `搜索全部贡献者：近 7 天匹配 ${fmtNumber(activeMatches.length)} 个，7 天以外匹配 ${fmtNumber(olderMatches.length)} 个。`;
+    } else {
+      els.contributorCountNote.textContent = `默认展示 ${fmtNumber(activeRows.length)} 个近 7 天活跃 owner；7 天以外 ${fmtNumber(older.length)} 个已折叠，可用搜索框检索。`;
+    }
   }
 
-  els.contributorRows.innerHTML = rows.length
-    ? rows.map((person) => renderContributorCard(person)).join("")
-    : `<div class="loading">没有匹配的贡献者。</div>`;
+  els.contributorRows.innerHTML = activeRows.length
+    ? activeRows.map((person) => renderContributorCard(person)).join("")
+    : `<div class="loading">${query ? "近 7 天没有匹配的贡献者，看看下方 7 天以外结果。" : "近 7 天暂无活跃贡献者。"}</div>`;
+
+  if (els.olderContributorPanel && els.olderContributorSummary && els.olderContributorRows) {
+    els.olderContributorPanel.open = Boolean(query && olderRows.length);
+    els.olderContributorSummary.textContent = query
+      ? `7 天以外匹配 ${fmtNumber(olderMatches.length)} 个${olderMatches.length > olderRows.length ? `，显示前 ${fmtNumber(olderRows.length)} 个` : ""}`
+      : `7 天以外贡献者 ${fmtNumber(older.length)} 个（已折叠，搜索可查）`;
+    els.olderContributorRows.innerHTML = query
+      ? (olderRows.length ? olderRows.map((person) => renderContributorCard(person)).join("") : `<div class="loading">7 天以外没有匹配的贡献者。</div>`)
+      : `<div class="loading">默认收起历史贡献者，使用上方搜索框可按 owner、地区、组织、关键词、模块名检索。</div>`;
+  }
 }
 
 async function load(force = false) {
