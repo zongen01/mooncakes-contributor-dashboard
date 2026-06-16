@@ -2,6 +2,27 @@ name: Build and deploy Mooncakes dashboard
 
 on:
   workflow_dispatch:
+    inputs:
+      run_ai_portraits:
+        description: "Run AI portraits for recent contributors"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      ai_analysis_days:
+        description: "AI portrait window in days"
+        required: false
+        default: "7"
+      ai_target_scope:
+        description: "AI target owners"
+        required: false
+        default: "active"
+        type: choice
+        options:
+          - active
+          - newcomers
   schedule:
     - cron: "20 1 * * *"
   push:
@@ -35,6 +56,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           AI_PORTRAIT_LIMIT: ${{ vars.AI_PORTRAIT_LIMIT }}
+          RUN_AI_PORTRAITS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ai_portraits || 'false' }}
+          AI_ANALYSIS_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.ai_analysis_days || '7' }}
+          AI_TARGET_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.ai_target_scope || 'active' }}
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

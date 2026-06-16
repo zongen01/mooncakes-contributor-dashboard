@@ -101,7 +101,8 @@ h2 {
   text-align: center;
 }
 
-button {
+button,
+.button-link {
   min-height: 38px;
   border: 1px solid #c9795a;
   border-radius: 8px;
@@ -112,8 +113,10 @@ button {
   padding: 8px 14px;
 }
 
-button:hover {
+button:hover,
+.button-link:hover {
   background: #e29a80;
+  text-decoration: none;
 }
 
 button:disabled {

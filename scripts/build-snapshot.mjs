@@ -10,6 +10,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const AI_PORTRAIT_LIMIT = Number(process.env.AI_PORTRAIT_LIMIT || 80);
 const AI_CONCURRENCY = Number(process.env.AI_CONCURRENCY || 3);
+const RUN_AI_PORTRAITS = ["1", "true", "yes", "on"].includes(String(process.env.RUN_AI_PORTRAITS || "").toLowerCase());
+const AI_ANALYSIS_DAYS = Number(process.env.AI_ANALYSIS_DAYS || 7);
+const AI_TARGET_SCOPE = String(process.env.AI_TARGET_SCOPE || "active").toLowerCase();
 
 function todayInShanghai() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -119,7 +122,7 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
         first_seen: created,
         last_seen: created,
         module_count: 0,
-        recent30_count: 0,
+        recent_count: 0,
         modules: []
       });
     }
@@ -127,7 +130,7 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
     entry.module_count += 1;
     entry.first_seen = created < entry.first_seen ? created : entry.first_seen;
     entry.last_seen = created > entry.last_seen ? created : entry.last_seen;
-    if (daysBetween(created, snapshotDate) <= 30) entry.recent30_count += 1;
+    if (daysBetween(created, snapshotDate) <= AI_ANALYSIS_DAYS) entry.recent_count += 1;
     entry.modules.push({
       name: module.name || "",
       version: module.version || "",
@@ -140,8 +143,11 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
   }
 
   return Array.from(byOwner.values())
-    .filter((entry) => daysBetween(entry.first_seen, snapshotDate) <= 30)
-    .sort((a, b) => b.first_seen.localeCompare(a.first_seen) || b.module_count - a.module_count || a.owner.localeCompare(b.owner))
+    .filter((entry) => {
+      if (AI_TARGET_SCOPE === "newcomers") return daysBetween(entry.first_seen, snapshotDate) <= AI_ANALYSIS_DAYS;
+      return entry.recent_count > 0;
+    })
+    .sort((a, b) => b.recent_count - a.recent_count || b.last_seen.localeCompare(a.last_seen) || b.module_count - a.module_count || a.owner.localeCompare(b.owner))
     .slice(0, AI_PORTRAIT_LIMIT)
     .map((entry) => {
       const profile = githubProfiles[entry.owner] || null;
@@ -150,7 +156,9 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
         first_seen: entry.first_seen,
         last_seen: entry.last_seen,
         module_count: entry.module_count,
-        recent30_count: entry.recent30_count,
+        recent_count: entry.recent_count,
+        analysis_window_days: AI_ANALYSIS_DAYS,
+        target_scope: AI_TARGET_SCOPE,
         github_profile: profile && profile.exists !== false && !profile.error ? {
           login: profile.login || entry.owner,
           name: profile.name || "",
@@ -269,16 +277,18 @@ async function fetchAiPortrait(target) {
 }
 
 async function buildAiPortraits(modules, githubProfiles, snapshotDate) {
-  if (!OPENAI_API_KEY || AI_PORTRAIT_LIMIT <= 0) {
+  if (!RUN_AI_PORTRAITS || !OPENAI_API_KEY || AI_PORTRAIT_LIMIT <= 0) {
     return {
       portraits: {},
       meta: {
         enabled: false,
-        reason: OPENAI_API_KEY ? "AI_PORTRAIT_LIMIT is 0" : "OPENAI_API_KEY not configured",
+        reason: !RUN_AI_PORTRAITS ? "RUN_AI_PORTRAITS not enabled" : OPENAI_API_KEY ? "AI_PORTRAIT_LIMIT is 0" : "OPENAI_API_KEY not configured",
         model: OPENAI_MODEL,
         requested: 0,
         succeeded: 0,
-        failed: 0
+        failed: 0,
+        window_days: AI_ANALYSIS_DAYS,
+        target_scope: AI_TARGET_SCOPE
       }
     };
   }
@@ -307,7 +317,10 @@ async function buildAiPortraits(modules, githubProfiles, snapshotDate) {
       requested: targets.length,
       succeeded: Object.values(portraits).filter((portrait) => !portrait.error).length,
       failed,
-      limit: AI_PORTRAIT_LIMIT
+      limit: AI_PORTRAIT_LIMIT,
+      window_days: AI_ANALYSIS_DAYS,
+      target_scope: AI_TARGET_SCOPE,
+      manual: true
     }
   };
 }

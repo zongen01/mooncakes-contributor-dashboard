@@ -723,6 +723,16 @@ function renderIssues() {
   `).join("");
 }
 
+function aiMetaNote(aiMeta, total) {
+  if (aiMeta?.enabled) {
+    return `${fmtNumber(aiMeta.succeeded || 0)} / ${fmtNumber(total)} 人，模型 ${aiMeta.model || "未记录"}，窗口 ${fmtNumber(aiMeta.window_days || 7)} 天`;
+  }
+  if (aiMeta?.reason === "RUN_AI_PORTRAITS not enabled") return "未手动触发 AI，当前使用规则画像";
+  if (aiMeta?.reason === "OPENAI_API_KEY not configured") return "未配置 OPENAI_API_KEY，当前使用规则画像";
+  if (aiMeta?.reason === "AI_PORTRAIT_LIMIT is 0") return "AI_PORTRAIT_LIMIT 为 0，当前使用规则画像";
+  return `${aiMeta?.reason || "AI 未运行"}，当前使用规则画像`;
+}
+
 function renderNewcomers() {
   const newcomers = state.analysis.newcomers;
   const in7 = newcomers.in7;
@@ -732,7 +742,7 @@ function renderNewcomers() {
     ["统计窗口", "近 7 天", `本区所有占比的分母都是近 7 天新增 owner：${fmtNumber(in7.length)} 人`],
     ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(in7.length), `近 7 天首次出现的 owner`],
-    ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMeta.enabled ? `${fmtNumber(newcomers.withAi)} / ${fmtNumber(in7.length)} 人，模型 ${aiMeta.model || "未记录"}` : "未配置 OPENAI_API_KEY，使用规则画像"],
+    ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMetaNote(aiMeta, in7.length)],
     ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
     ["近7天可判定地区人数", fmtPct(in7.length ? newcomers.withLocation / in7.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in7.length)} 个新增 owner 的公开 location 可归类`],
     ["近7天高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} / ${fmtNumber(in7.length)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
