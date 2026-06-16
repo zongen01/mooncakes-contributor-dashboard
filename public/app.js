@@ -21,6 +21,7 @@ const els = {
   locationList: document.querySelector("#locationList"),
   identityList: document.querySelector("#identityList"),
   contributorRows: document.querySelector("#contributorRows"),
+  contributorCountNote: document.querySelector("#contributorCountNote"),
   rangeSelect: document.querySelector("#rangeSelect"),
   searchInput: document.querySelector("#searchInput")
 };
@@ -733,31 +734,10 @@ function renderNewcomers() {
   renderBarList(els.newcomerLocationList, newcomers.locations, 8);
   renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
 
-  els.newcomerRows.innerHTML = in30.slice(0, 40).map((person) => {
-    const modules = person.modules
-      .slice()
-      .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)))
-      .slice(0, 4)
-      .map((module) => moduleShort(module.name));
-    return `
-      <tr>
-        <td class="owner-cell">
-          ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
-          <div class="subtle">${person.profile?.name || "GitHub 名称未填写"}</div>
-        </td>
-        <td>${person.first}</td>
-        <td>${person.location}<div class="subtle">${person.profile?.location || "location 未公开"}</div><div class="subtle">${cleanCompany(person.profile?.company) || "组织未填写"}</div></td>
-        <td><span class="tag ${person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : ""}">${person.identity}</span><div class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</div></td>
-        <td><strong>${fmtNumber(person.count)}</strong><div class="subtle">近 30 天 ${fmtNumber(person.recent30)}</div></td>
-        <td class="subtle">${modules.join("、")}</td>
-        <td>${renderPortraitDetails(person)}</td>
-        <td>${newcomerActionFor(person)}</td>
-      </tr>
-    `;
-  }).join("");
+  els.newcomerRows.innerHTML = in30.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
 
   if (!in30.length) {
-    els.newcomerRows.innerHTML = `<tr><td colspan="8" class="subtle">近 30 天暂无首次出现的新增 owner。</td></tr>`;
+    els.newcomerRows.innerHTML = `<div class="loading">近 30 天暂无首次出现的新增 owner。</div>`;
   }
 }
 
@@ -848,44 +828,113 @@ function renderPortraitDetails(person) {
   `;
 }
 
+function tagClassFor(tag) {
+  if (tag.includes("缺失") || tag.includes("沉寂") || tag.includes("未覆盖")) return "risk";
+  if (tag.includes("活跃") || tag.includes("核心") || tag.includes("AI已分析")) return "hot";
+  return "warn";
+}
+
+function renderProfileSummary(person) {
+  const profile = person.profile;
+  if (!profile) {
+    return `
+      <div class="profile-summary missing">
+        <strong>GitHub 未覆盖</strong>
+        <span>没有可用公开主页数据，身份和地区只能按模块元数据低置信判断。</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="profile-summary">
+      <strong>${profile.html_url ? `<a href="${profile.html_url}" target="_blank" rel="noreferrer">${profile.name || profile.login || person.owner}</a>` : profile.name || person.owner}</strong>
+      <span>${profile.location || "地区未填写"} · ${cleanCompany(profile.company) || "组织未填写"}</span>
+      <span>followers ${fmtNumber(profile.followers)} / repos ${fmtNumber(profile.public_repos)}</span>
+    </div>
+  `;
+}
+
+function renderContributorCard(person, options = {}) {
+  const isNewcomer = options.mode === "newcomer";
+  const category = person.topCategories.map(([name, value]) => `${name} ${value}`).join(" / ") || "通用";
+  const tags = person.signals.length ? person.signals : ["正常"];
+  const modules = person.modules
+    .slice()
+    .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)))
+    .slice(0, isNewcomer ? 5 : 6)
+    .map((module) => moduleShort(module.name));
+  const priorityClass = person.portrait?.priority === "P0" ? "hot" : person.portrait?.priority === "P1" ? "warn" : "";
+  const identityClass = person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : "";
+  const confidence = person.portrait?.confidence || 0;
+  const confidenceClass = confidence >= 0.66 ? "hot" : confidence >= 0.42 ? "warn" : "risk";
+
+  return `
+    <article class="person-card ${isNewcomer ? "newcomer-card" : ""}">
+      <div class="person-card-head">
+        <div>
+          <div class="owner-title">
+            ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
+          </div>
+          <div class="subtle">${person.first} 至 ${person.last}</div>
+        </div>
+        <div class="pill-row compact-pills">
+          <span class="tag ${priorityClass}">${person.portrait?.priority || "P2"}</span>
+          <span class="tag ${confidenceClass}">画像 ${fmtPct(confidence, 0)}</span>
+        </div>
+      </div>
+
+      <div class="person-stats">
+        <div><strong>${fmtNumber(person.count)}</strong><span>模块</span></div>
+        <div><strong>${fmtNumber(person.recent30)}</strong><span>近30天</span></div>
+        <div><strong>${person.last}</strong><span>最近新增</span></div>
+      </div>
+
+      <div class="person-body">
+        <section>
+          <h3>公开资料</h3>
+          ${renderProfileSummary(person)}
+        </section>
+        <section>
+          <h3>方向与身份</h3>
+          <div class="pill-row">
+            <span class="tag">${category}</span>
+            <span class="tag ${identityClass}">${person.identity}</span>
+          </div>
+          <p class="subtle">${person.location} · 身份置信 ${fmtPct(person.identityConfidence, 0)}</p>
+          <p class="subtle">${person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词"}</p>
+        </section>
+        <section class="full-row">
+          <h3>画像判断</h3>
+          ${renderPortraitDetails(person)}
+        </section>
+        <section>
+          <h3>问题提示</h3>
+          <div class="pill-row">${tags.map((tag) => `<span class="tag ${tagClassFor(tag)}">${tag}</span>`).join("")}</div>
+        </section>
+        <section>
+          <h3>${isNewcomer ? "建议动作" : "代表模块"}</h3>
+          <p class="subtle">${isNewcomer ? newcomerActionFor(person) : modules.join("、")}</p>
+          ${isNewcomer ? `<p class="subtle module-line">${modules.join("、")}</p>` : ""}
+        </section>
+      </div>
+    </article>
+  `;
+}
+
 function renderContributors() {
   const query = state.search.trim().toLowerCase();
   const rows = state.analysis.contributors
     .filter((person) => !query || person.searchText.includes(query))
-    .slice(0, 300);
+    .slice(0, 180);
 
-  els.contributorRows.innerHTML = rows.map((person) => {
-    const category = person.topCategories.map(([name, value]) => `${name} ${value}`).join(" / ") || "通用";
-    const tags = person.signals.length ? person.signals : ["正常"];
-    const modules = person.modules
-      .slice()
-      .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)))
-      .slice(0, 6)
-      .map((module) => moduleShort(module.name));
-    const profile = person.profile;
-    const profileHtml = profile?.html_url ? `
-      <div class="profile-cell">
-        <a href="${profile.html_url}" target="_blank" rel="noreferrer">${profile.name || profile.login || person.owner}</a>
-        <div class="subtle">${profile.location || "地区未填写"}</div>
-        <div class="subtle">${cleanCompany(profile.company) || "组织未填写"}</div>
-        <div class="subtle">followers ${fmtNumber(profile.followers)} / repos ${fmtNumber(profile.public_repos)}</div>
-      </div>
-    ` : `<span class="subtle">未抓取</span>`;
-    return `
-      <tr>
-        <td class="owner-cell">${person.owner}<div class="subtle">${person.first} 至 ${person.last}</div></td>
-        <td>${profileHtml}</td>
-        <td><strong>${fmtNumber(person.count)}</strong></td>
-        <td>${person.last}</td>
-        <td>${fmtNumber(person.recent30)} / 30 天</td>
-        <td>${category}<div class="subtle">${person.topKeywords.map(([key]) => key).join("、")}</div></td>
-        <td><span class="tag ${person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : ""}">${person.identity}</span><div class="subtle">${person.location}</div><div class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</div></td>
-        <td>${renderPortraitDetails(person)}</td>
-        <td><div class="pill-row">${tags.map((tag) => `<span class="tag ${tag.includes("缺失") || tag.includes("沉寂") ? "risk" : tag.includes("活跃") || tag.includes("核心") ? "hot" : "warn"}">${tag}</span>`).join("")}</div></td>
-        <td class="subtle">${modules.join("、")}</td>
-      </tr>
-    `;
-  }).join("");
+  if (els.contributorCountNote) {
+    const total = state.analysis.contributors.length;
+    const matched = state.analysis.contributors.filter((person) => !query || person.searchText.includes(query)).length;
+    els.contributorCountNote.textContent = `当前显示 ${fmtNumber(rows.length)} / ${fmtNumber(matched)} 个匹配贡献者，共 ${fmtNumber(total)} 个 owner。支持筛选 owner、地区、组织、关键词、模块名和风险标签。`;
+  }
+
+  els.contributorRows.innerHTML = rows.length
+    ? rows.map((person) => renderContributorCard(person)).join("")
+    : `<div class="loading">没有匹配的贡献者。</div>`;
 }
 
 async function load(force = false) {

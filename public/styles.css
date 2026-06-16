@@ -290,8 +290,8 @@ tr:last-child td {
 }
 
 .portrait-cell {
-  min-width: 220px;
-  max-width: 300px;
+  min-width: 0;
+  max-width: none;
 }
 
 .portrait-lines {
@@ -321,6 +321,121 @@ tr:last-child td {
   color: #2d4658;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.portrait-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.newcomer-portrait-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.person-card {
+  min-width: 0;
+  border: 1px solid #e2e9ee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 14px;
+}
+
+.person-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #edf1f3;
+}
+
+.owner-title {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.compact-pills {
+  justify-content: flex-end;
+}
+
+.person-stats {
+  display: grid;
+  grid-template-columns: 0.7fr 0.7fr 1.2fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.person-stats div {
+  min-width: 0;
+  border: 1px solid #e8eef2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.person-stats strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.person-stats span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.person-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.person-body section {
+  min-width: 0;
+}
+
+.person-body section.full-row {
+  grid-column: 1 / -1;
+}
+
+.person-body h3 {
+  margin: 0 0 7px;
+  color: #4b5863;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.person-body p,
+.module-line {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.profile-summary {
+  display: grid;
+  gap: 4px;
+  color: #40505d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.profile-summary strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.profile-summary.missing strong {
+  color: var(--red);
 }
 
 .subtle {
@@ -473,6 +588,11 @@ tr:last-child td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .portrait-grid,
+  .newcomer-portrait-grid {
+    grid-template-columns: 1fr;
+  }
+
   .newcomer-summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -502,7 +622,9 @@ tr:last-child td {
   }
 
   .newcomer-summary-grid,
-  .newcomer-bars {
+  .newcomer-bars,
+  .person-body,
+  .person-stats {
     grid-template-columns: 1fr;
   }
 

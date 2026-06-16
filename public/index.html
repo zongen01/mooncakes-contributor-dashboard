@@ -41,23 +41,7 @@
                 <div id="newcomerIdentityList" class="bar-list"></div>
               </div>
             </div>
-            <div class="table-wrap compact newcomer-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>新增 owner</th>
-                    <th>首次出现</th>
-                    <th>公开地区/组织</th>
-                    <th>身份线索</th>
-                    <th>模块数</th>
-                    <th>代表模块</th>
-                    <th>画像细节</th>
-                    <th>建议动作</th>
-                  </tr>
-                </thead>
-                <tbody id="newcomerRows"></tbody>
-              </table>
-            </div>
+            <div class="portrait-grid newcomer-portrait-grid" id="newcomerRows"></div>
           </div>
         </article>
 
@@ -95,29 +79,11 @@
           <div class="panel-head">
             <div>
               <h2>贡献者画像表</h2>
-              <p>支持筛选 owner、地区、组织、关键词、模块名和风险标签。</p>
+              <p id="contributorCountNote">支持筛选 owner、地区、组织、关键词、模块名和风险标签。</p>
             </div>
             <input id="searchInput" type="search" placeholder="搜索贡献者 / 地区 / 组织 / 关键词">
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>owner</th>
-                  <th>GitHub 公开资料</th>
-                  <th>模块数</th>
-                  <th>最近新增</th>
-                  <th>近期新增</th>
-                  <th>方向画像</th>
-                  <th>身份线索</th>
-                  <th>画像细节</th>
-                  <th>问题提示</th>
-                  <th>代表模块</th>
-                </tr>
-              </thead>
-              <tbody id="contributorRows"></tbody>
-            </table>
-          </div>
+          <div class="portrait-grid" id="contributorRows"></div>
         </article>
 
         <article class="panel span-4">
