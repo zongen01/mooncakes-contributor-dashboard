@@ -581,7 +581,7 @@ tr:last-child td {
 
 .newcomer-bars {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -599,6 +599,98 @@ tr:last-child td {
 
 .newcomer-table-wrap {
   max-height: 330px;
+}
+
+.newcomer-map {
+  border: 1px solid #e5eaee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-title-row h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.owner-module-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.owner-module-card {
+  min-width: 0;
+  border: 1px solid #e8eef2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.owner-module-card p {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.module-mini-list {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-mini-list li {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.1fr);
+  gap: 8px;
+  color: #40505d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.module-mini-list strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.module-mini-list span {
+  overflow-wrap: anywhere;
+}
+
+.action-line {
+  border-top: 1px solid #edf1f3;
+  padding-top: 7px;
+}
+
+.reconcile-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reconcile-card {
+  min-width: 0;
+  border: 1px solid #e5eaee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.reconcile-card p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .issue-card,
@@ -679,6 +771,11 @@ tr:last-child td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .newcomer-bars,
+  .reconcile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .span-4,
   .span-6,
   .span-8 {
@@ -705,8 +802,14 @@ tr:last-child td {
 
   .newcomer-summary-grid,
   .newcomer-bars,
+  .owner-module-list,
+  .reconcile-grid,
   .person-body,
   .person-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .module-mini-list li {
     grid-template-columns: 1fr;
   }
 

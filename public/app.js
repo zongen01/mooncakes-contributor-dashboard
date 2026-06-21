@@ -17,6 +17,10 @@ const els = {
   newcomerSummary: document.querySelector("#newcomerSummary"),
   newcomerLocationList: document.querySelector("#newcomerLocationList"),
   newcomerIdentityList: document.querySelector("#newcomerIdentityList"),
+  newcomerSourceList: document.querySelector("#newcomerSourceList"),
+  newcomerMapNote: document.querySelector("#newcomerMapNote"),
+  newcomerModuleMap: document.querySelector("#newcomerModuleMap"),
+  dataReconcileList: document.querySelector("#dataReconcileList"),
   newcomerRows: document.querySelector("#newcomerRows"),
   tierList: document.querySelector("#tierList"),
   categoryList: document.querySelector("#categoryList"),
@@ -53,6 +57,11 @@ function ownerOf(moduleName) {
 
 function moduleShort(moduleName) {
   return String(moduleName || "").split("/").slice(1).join("/") || moduleName;
+}
+
+function safeWebUrl(url) {
+  const text = String(url || "").trim();
+  return /^https?:\/\//i.test(text) ? text : "";
 }
 
 function topEntries(obj, limit = 8) {
@@ -144,6 +153,37 @@ function inferIdentity(profile, person) {
   if (company) return { label: "有组织归属线索", confidence: 0.56, evidence: ["公开 company 已填写"] };
   if (profile?.bio) return { label: "个人开发者", confidence: 0.48, evidence: ["公开 bio 已填写，但缺少明确方向"] };
   return { label: "公开资料较少", confidence: 0.24, evidence: ["GitHub 公开资料字段较少"] };
+}
+
+function inferSource(person, profile, snapshotDate) {
+  const recentModules = person.modules.filter((module) => daysBetween(dayKey(module.created_at), snapshotDate) <= ANALYSIS_DAYS);
+  const repositories = recentModules.map((module) => String(module.repository || "")).filter(Boolean);
+  const company = cleanCompany(profile?.company);
+  const profileText = `${profile?.type || ""} ${profile?.name || ""} ${company} ${profile?.bio || ""}`.toLowerCase();
+
+  if ((profile?.type || "").toLowerCase() === "organization") {
+    return { label: "GitHub 组织账号", evidence: "GitHub type=Organization" };
+  }
+  if (repositories.some((repo) => /github\.com\/moonbit-community|github\.com\/moonbitlang/i.test(repo))) {
+    return { label: "MoonBit 社区仓库", evidence: "新增模块 repository 指向 moonbit-community/moonbitlang" };
+  }
+  if (/(university|college|institute|school|lab|research|academy|大学|学院|研究|实验室)/.test(profileText)) {
+    return { label: "高校/研究机构公开资料", evidence: "GitHub company/bio/name 含高校或研究机构线索" };
+  }
+  if (company) {
+    return { label: "组织字段公开", evidence: `GitHub company=${company}` };
+  }
+  if (repositories.length) {
+    const githubRepos = repositories.filter((repo) => /github\.com/i.test(repo)).length;
+    return {
+      label: githubRepos ? "个人 GitHub 仓库" : "外部仓库链接",
+      evidence: `近 7 天新增模块 ${repositories.length} 个填写 repository`
+    };
+  }
+  if (profile?.location || profile?.bio) {
+    return { label: "GitHub 公开资料", evidence: "公开 location/bio 可作为来源线索" };
+  }
+  return { label: "来源线索不足", evidence: "GitHub 公开资料少，新增模块 repository 也不足" };
 }
 
 function newcomerActionFor(person) {
@@ -359,6 +399,7 @@ function analyze(snapshot) {
     const identityInfo = inferIdentity(profile, { ...person, topCategories, topKeywords });
     const identity = aiPortrait?.identity_label ? `AI：${aiPortrait.identity_label}` : identityInfo.label;
     const identityConfidence = aiPortrait ? Math.max(identityInfo.confidence, Number(aiPortrait.confidence)) : identityInfo.confidence;
+    const source = inferSource({ ...person, topCategories, topKeywords }, profile, snapshot.date);
     const signals = [];
     if (person.count >= 20) signals.push("核心高产");
     if (person.recent7 >= 3) signals.push("近7天活跃");
@@ -398,6 +439,7 @@ function analyze(snapshot) {
       identity,
       identityConfidence,
       identityEvidence: aiPortrait?.evidence || identityInfo.evidence,
+      source,
       portrait,
       topCategories,
       topKeywords,
@@ -410,6 +452,8 @@ function analyze(snapshot) {
         profile?.bio || "",
         location,
         identity,
+        source.label,
+        source.evidence,
         portrait.accountAgeLabel,
         portrait.influenceLabel,
         portrait.paceLabel,
@@ -488,6 +532,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   const today = in7.filter((person) => person.first === snapshotDate);
   const locations = {};
   const identities = {};
+  const sources = {};
   const categories = {};
   let withProfile = 0;
   let withLocation = 0;
@@ -502,6 +547,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     if (person.aiPortrait) withAi += 1;
     locations[person.location] = (locations[person.location] || 0) + 1;
     identities[person.identity] = (identities[person.identity] || 0) + 1;
+    sources[person.source.label] = (sources[person.source.label] || 0) + 1;
     if (person.location !== UNKNOWN_LOCATION) withLocation += 1;
     if (cleanCompany(person.profile?.company)) withCompany += 1;
     if ((person.portrait?.confidence || 0) >= 0.66) highConfidence += 1;
@@ -517,6 +563,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     today,
     locations,
     identities,
+    sources,
     categories,
     withProfile,
     withLocation,
@@ -610,6 +657,7 @@ function render() {
   renderDaily();
   renderIssues();
   renderNewcomers();
+  renderDataReconciliation();
   renderTiers();
   renderCategories();
   renderGithubPanels();
@@ -761,12 +809,74 @@ function renderNewcomers() {
 
   renderBarList(els.newcomerLocationList, newcomers.locations, 8);
   renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
+  renderBarList(els.newcomerSourceList, newcomers.sources, 8);
+  renderNewcomerModuleMap(in7);
 
   els.newcomerRows.innerHTML = in7.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
 
   if (!in7.length) {
     els.newcomerRows.innerHTML = `<div class="loading">近 7 天暂无首次出现的新增 owner。</div>`;
   }
+}
+
+function renderNewcomerModuleMap(people) {
+  if (!els.newcomerModuleMap) return;
+  if (els.newcomerMapNote) {
+    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS).length, 0);
+    els.newcomerMapNote.textContent = `${fmtNumber(people.length)} 个新增 owner，对应 ${fmtNumber(moduleCount)} 个近 7 天新增模块`;
+  }
+  if (!people.length) {
+    els.newcomerModuleMap.innerHTML = `<div class="loading">近 7 天暂无新增 owner。</div>`;
+    return;
+  }
+  els.newcomerModuleMap.innerHTML = people.map((person) => {
+    const recentModules = person.modules
+      .filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS)
+      .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)) || String(a.name).localeCompare(String(b.name)));
+    const moduleHtml = recentModules.map((module) => {
+      const repoUrl = safeWebUrl(module.repository);
+      const repo = repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noreferrer">repo</a>` : module.repository ? `<span class="tag warn">repo 非链接</span>` : `<span class="tag risk">repo 未填</span>`;
+      return `<li><strong>${moduleShort(module.name)}</strong><span>${dayKey(module.created_at)} · ${categoryFor(module)} · ${repo}</span></li>`;
+    }).join("");
+    return `
+      <div class="owner-module-card">
+        <div>
+          <strong>${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}</strong>
+          <p class="subtle">${person.source.label} · ${person.source.evidence}</p>
+        </div>
+        <div class="pill-row">
+          <span class="tag">${person.location}</span>
+          <span class="tag">${person.identity}</span>
+          <span class="tag ${person.portrait?.priority === "P0" ? "hot" : person.portrait?.priority === "P1" ? "warn" : ""}">${person.portrait?.priority || "P2"}</span>
+        </div>
+        <ul class="module-mini-list">${moduleHtml}</ul>
+        <p class="subtle action-line">${newcomerActionFor(person)}</p>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderDataReconciliation() {
+  if (!els.dataReconcileList) return;
+  const a = state.analysis;
+  const s = state.snapshot;
+  const active7 = a.contributors.filter((person) => person.recent7 > 0);
+  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), s.date) <= ANALYSIS_DAYS).length, 0);
+  const cards = [
+    ["大盘模块数", fmtNumber(a.stats.total_modules || a.modules.length), "来自 mooncakes statistics/API，是 registry 里的模块总量，不是人数。"],
+    ["大盘 Packages", fmtNumber(a.stats.total_packages || 0), "来自 mooncakes statistics，可能包含包/版本维度，不能和 owner 人数相加对比。"],
+    ["贡献者 owner", fmtNumber(a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
+    ["近7天活跃 owner", fmtNumber(active7.length), "近 7 天内发过新增模块的 owner，不要求是第一次出现。"],
+    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
+    ["新增 owner 对应模块", fmtNumber(newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
+  ];
+  els.dataReconcileList.innerHTML = cards.map(([label, value, note]) => `
+    <div class="reconcile-card">
+      <div class="metric-label">${label}</div>
+      <div class="mini-metric-value">${value}</div>
+      <p>${note}</p>
+    </div>
+  `).join("");
 }
 
 function renderTiers() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mooncakes 贡献者每日分析</title>
-    <link rel="stylesheet" href="styles.css?v=20260616-location-unknown">
+    <link rel="stylesheet" href="styles.css?v=20260621-owner-module-source">
   </head>
   <body>
     <main class="app-shell">
@@ -41,9 +41,30 @@
                 <h3>近7天新增 owner 公开身份线索</h3>
                 <div id="newcomerIdentityList" class="bar-list"></div>
               </div>
+              <div>
+                <h3>近7天新增 owner 来源线索</h3>
+                <div id="newcomerSourceList" class="bar-list"></div>
+              </div>
+            </div>
+            <div class="newcomer-map">
+              <div class="section-title-row">
+                <h3>新增 owner 对应新增模块</h3>
+                <span id="newcomerMapNote" class="subtle"></span>
+              </div>
+              <div id="newcomerModuleMap" class="owner-module-list"></div>
             </div>
             <div class="portrait-grid newcomer-portrait-grid" id="newcomerRows"></div>
           </div>
+        </article>
+
+        <article class="panel span-12">
+          <div class="panel-head">
+            <div>
+              <h2>数据口径对齐</h2>
+              <p>解释为什么贡献者人数、近 7 天新增 owner 和 mooncakes.io 大盘模块/包数量不是同一个数。</p>
+            </div>
+          </div>
+          <div id="dataReconcileList" class="reconcile-grid"></div>
         </article>
 
         <article class="panel span-6">
@@ -141,6 +162,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260616-location-unknown" type="module"></script>
+    <script src="app.js?v=20260621-owner-module-source" type="module"></script>
   </body>
 </html>
