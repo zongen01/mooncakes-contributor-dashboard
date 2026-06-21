@@ -693,6 +693,44 @@ tr:last-child td {
   line-height: 1.45;
 }
 
+.quality-check-list {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quality-check {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e5eaee;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 9px 10px;
+  color: #40505d;
+  font-size: 12px;
+}
+
+.quality-check strong {
+  color: var(--green);
+}
+
+.quality-check.warning strong {
+  color: #865f17;
+}
+
+.quality-check.error strong {
+  color: var(--red);
+}
+
+.quality-check em {
+  color: var(--muted);
+  font-style: normal;
+  white-space: nowrap;
+}
+
 .issue-card,
 .tier-card {
   border: 1px solid #e5eaee;
@@ -772,6 +810,7 @@ tr:last-child td {
   }
 
   .newcomer-bars,
+  .quality-check-list,
   .reconcile-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -803,6 +842,7 @@ tr:last-child td {
   .newcomer-summary-grid,
   .newcomer-bars,
   .owner-module-list,
+  .quality-check-list,
   .reconcile-grid,
   .person-body,
   .person-stats {
@@ -811,6 +851,14 @@ tr:last-child td {
 
   .module-mini-list li {
     grid-template-columns: 1fr;
+  }
+
+  .quality-check {
+    grid-template-columns: 1fr;
+  }
+
+  .quality-check em {
+    white-space: normal;
   }
 
   h1 {

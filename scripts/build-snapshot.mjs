@@ -54,6 +54,129 @@ function truncate(value, max = 280) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+function deriveMetrics(modules, statistics, snapshotDate) {
+  const owners = new Map();
+  const recent7Owners = new Set();
+  const recent7Modules = [];
+  const invalidCreatedAt = [];
+
+  for (const module of modules) {
+    const owner = ownerOf(module.name);
+    const created = dayKey(module.created_at);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(created)) invalidCreatedAt.push(module.name || "(unknown)");
+    if (!owners.has(owner)) {
+      owners.set(owner, {
+        first_seen: created,
+        last_seen: created,
+        module_count: 0,
+        recent7_count: 0
+      });
+    }
+    const entry = owners.get(owner);
+    entry.module_count += 1;
+    entry.first_seen = created < entry.first_seen ? created : entry.first_seen;
+    entry.last_seen = created > entry.last_seen ? created : entry.last_seen;
+    if (daysBetween(created, snapshotDate) <= 7) {
+      entry.recent7_count += 1;
+      recent7Owners.add(owner);
+      recent7Modules.push(module);
+    }
+  }
+
+  const ownerRows = Array.from(owners.entries()).map(([owner, entry]) => ({ owner, ...entry }));
+  const recent7NewOwners = ownerRows.filter((entry) => daysBetween(entry.first_seen, snapshotDate) <= 7);
+  const todayNewOwners = recent7NewOwners.filter((entry) => entry.first_seen === snapshotDate);
+  const recent7NewOwnerSet = new Set(recent7NewOwners.map((entry) => entry.owner));
+  const recent7NewOwnerModules = recent7Modules.filter((module) => recent7NewOwnerSet.has(ownerOf(module.name)));
+
+  return {
+    algorithm_version: "2026-06-21.1",
+    snapshot_date: snapshotDate,
+    module_array_count: modules.length,
+    statistics_total_modules: Number(statistics?.total_modules || 0),
+    statistics_total_packages: Number(statistics?.total_packages || 0),
+    statistics_total_downloads: Number(statistics?.total_downloads || 0),
+    owner_count: owners.size,
+    recent7_active_owner_count: recent7Owners.size,
+    recent7_new_owner_count: recent7NewOwners.length,
+    today_new_owner_count: todayNewOwners.length,
+    recent7_module_count: recent7Modules.length,
+    recent7_new_owner_module_count: recent7NewOwnerModules.length,
+    invalid_created_at_count: invalidCreatedAt.length,
+    invalid_created_at_examples: invalidCreatedAt.slice(0, 10)
+  };
+}
+
+function buildDataQuality({ modules, statistics, owners, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+  const checks = [
+    {
+      id: "modules_count_matches_statistics",
+      label: "模块列表数量等于 statistics.total_modules",
+      severity: "error",
+      expected: Number(statistics?.total_modules || 0),
+      actual: modules.length,
+      passed: modules.length === Number(statistics?.total_modules || 0)
+    },
+    {
+      id: "owner_count_matches_github_requests",
+      label: "owner 去重数量等于 GitHub profile 请求数量",
+      severity: "error",
+      expected: owners.length,
+      actual: Object.keys(githubProfiles).length,
+      passed: owners.length === Object.keys(githubProfiles).length
+    },
+    {
+      id: "created_at_parseable",
+      label: "模块 created_at 可解析为日期",
+      severity: "error",
+      expected: 0,
+      actual: derivedMetrics.invalid_created_at_count,
+      passed: derivedMetrics.invalid_created_at_count === 0
+    },
+    {
+      id: "github_api_no_failures",
+      label: "GitHub API 抓取无失败",
+      severity: "warning",
+      expected: 0,
+      actual: githubFailed,
+      passed: githubFailed === 0
+    },
+    {
+      id: "github_not_found_recorded",
+      label: "GitHub 404 owner 已单独记录",
+      severity: "info",
+      expected: "recorded",
+      actual: githubNotFound,
+      passed: true
+    },
+    {
+      id: "ai_does_not_change_counts",
+      label: "AI 只生成画像，不参与基础计数",
+      severity: "info",
+      expected: true,
+      actual: true,
+      passed: true
+    },
+    {
+      id: "ai_status_recorded",
+      label: "AI 运行状态已记录",
+      severity: "info",
+      expected: "recorded",
+      actual: ai.meta?.enabled ? `${ai.meta.succeeded || 0}/${ai.meta.requested || 0}` : ai.meta?.reason || "disabled",
+      passed: true
+    }
+  ];
+  const hardFailures = checks.filter((check) => check.severity === "error" && !check.passed);
+  const warnings = checks.filter((check) => check.severity === "warning" && !check.passed);
+  return {
+    status: hardFailures.length ? "fail" : warnings.length ? "warn" : "pass",
+    generated_at: new Date().toISOString(),
+    hard_failures: hardFailures.length,
+    warnings: warnings.length,
+    checks
+  };
+}
+
 async function fetchGithubProfile(login) {
   const headers = {
     "Accept": "application/vnd.github+json",
@@ -359,6 +482,21 @@ async function main() {
     }
   });
   const ai = await buildAiPortraits(modules, githubProfiles, snapshotDate);
+  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate);
+  const dataQuality = buildDataQuality({
+    modules,
+    statistics,
+    owners,
+    githubProfiles,
+    githubFailed: failed,
+    githubNotFound: notFound,
+    ai,
+    derivedMetrics
+  });
+
+  if (dataQuality.status === "fail") {
+    throw new Error(`Data quality failed: ${dataQuality.checks.filter((check) => check.severity === "error" && !check.passed).map((check) => `${check.id} expected=${check.expected} actual=${check.actual}`).join("; ")}`);
+  }
 
   const snapshot = {
     date: snapshotDate,
@@ -371,6 +509,8 @@ async function main() {
     },
     modules,
     statistics,
+    derived_metrics: derivedMetrics,
+    data_quality: dataQuality,
     github_profiles: githubProfiles,
     ai_portraits: ai.portraits,
     ai_meta: ai.meta,

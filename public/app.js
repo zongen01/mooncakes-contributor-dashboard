@@ -860,23 +860,33 @@ function renderDataReconciliation() {
   if (!els.dataReconcileList) return;
   const a = state.analysis;
   const s = state.snapshot;
+  const derived = s.derived_metrics || {};
+  const quality = s.data_quality || {};
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
   const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), s.date) <= ANALYSIS_DAYS).length, 0);
   const cards = [
-    ["大盘模块数", fmtNumber(a.stats.total_modules || a.modules.length), "来自 mooncakes statistics/API，是 registry 里的模块总量，不是人数。"],
+    ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
+    ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `模块 API 当前抓到 ${fmtNumber(derived.module_array_count || a.modules.length)} 条；必须等于 statistics.total_modules。`],
     ["大盘 Packages", fmtNumber(a.stats.total_packages || 0), "来自 mooncakes statistics，可能包含包/版本维度，不能和 owner 人数相加对比。"],
-    ["贡献者 owner", fmtNumber(a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
-    ["近7天活跃 owner", fmtNumber(active7.length), "近 7 天内发过新增模块的 owner，不要求是第一次出现。"],
-    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
-    ["新增 owner 对应模块", fmtNumber(newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
+    ["贡献者 owner", fmtNumber(derived.owner_count || a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
+    ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count || active7.length), "近 7 天内发过新增模块的 owner，不要求是第一次出现。"],
+    ["近7天新增 owner", fmtNumber(derived.recent7_new_owner_count || a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
+    ["新增 owner 对应模块", fmtNumber(derived.recent7_new_owner_module_count || newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
   ];
+  const checkHtml = (quality.checks || []).map((check) => `
+    <div class="quality-check ${check.passed ? "passed" : check.severity}">
+      <strong>${check.passed ? "通过" : check.severity === "warning" ? "警告" : "失败"}</strong>
+      <span>${check.label}</span>
+      <em>实际 ${check.actual} / 期望 ${check.expected}</em>
+    </div>
+  `).join("");
   els.dataReconcileList.innerHTML = cards.map(([label, value, note]) => `
     <div class="reconcile-card">
       <div class="metric-label">${label}</div>
       <div class="mini-metric-value">${value}</div>
       <p>${note}</p>
     </div>
-  `).join("");
+  `).join("") + (checkHtml ? `<div class="quality-check-list">${checkHtml}</div>` : "");
 }
 
 function renderTiers() {
