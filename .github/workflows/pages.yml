@@ -23,8 +23,6 @@ on:
         options:
           - active
           - newcomers
-  schedule:
-    - cron: "20 1 * * *"
   push:
     branches:
       - main
