@@ -52,7 +52,7 @@ jobs:
       - name: Build daily data
         run: npm run build:data
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          MOONCAKES_EXPORTS_BASE_URL: ${{ vars.MOONCAKES_EXPORTS_BASE_URL || 'http://192.168.86.2:18080' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           AI_PORTRAIT_LIMIT: ${{ vars.AI_PORTRAIT_LIMIT }}

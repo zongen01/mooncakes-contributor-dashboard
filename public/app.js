@@ -117,7 +117,7 @@ function inferIdentity(profile, person) {
     return {
       label: "GitHub 资料未覆盖",
       confidence: 0,
-      evidence: ["GitHub API 未返回可用公开资料"]
+      evidence: ["导出站点未提供可用 GitHub 映射资料"]
     };
   }
   const company = cleanCompany(profile?.company);
@@ -644,7 +644,7 @@ function buildIssues(context) {
     issues.push({
       severity: "low",
       title: `近 7 天 GitHub 画像覆盖 ${fmtPct(githubCoverage)}，还有缺口`,
-      body: "未配置 GITHUB_TOKEN 时会受 GitHub API 限制。可以先看近 7 天活跃贡献者，配置 token 后再做全量画像。"
+      body: "导出站点 users.csv 里部分 owner 缺少 GitHub login 或头像字段，可以先看近 7 天活跃贡献者，再回补映射数据。"
     });
   }
   return issues.slice(0, 6);
@@ -866,8 +866,8 @@ function renderDataReconciliation() {
   const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), s.date) <= ANALYSIS_DAYS).length, 0);
   const cards = [
     ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
-    ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `模块 API 当前抓到 ${fmtNumber(derived.module_array_count || a.modules.length)} 条；必须等于 statistics.total_modules。`],
-    ["大盘 Packages", fmtNumber(a.stats.total_packages || 0), "来自 mooncakes statistics，可能包含包/版本维度，不能和 owner 人数相加对比。"],
+    ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `导出站点当前拼出 ${fmtNumber(derived.module_array_count || a.modules.length)} 条最新模块；必须等于 statistics.total_modules。`],
+    ["大盘 Packages", fmtNumber(a.stats.total_packages || 0), "来自导出站点 packages.csv 的包/版本口径，不能和 owner 人数相加对比。"],
     ["贡献者 owner", fmtNumber(derived.owner_count || a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
     ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count || active7.length), "近 7 天内发过新增模块的 owner，不要求是第一次出现。"],
     ["近7天新增 owner", fmtNumber(derived.recent7_new_owner_count || a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
@@ -940,7 +940,7 @@ function renderBarList(container, data, limit) {
   const entries = topEntries(data, limit);
   const max = Math.max(1, ...entries.map(([, value]) => value));
   if (!entries.length) {
-    container.innerHTML = `<div class="loading">还没有 GitHub 公开资料。未配置 GITHUB_TOKEN 时，首次抓取可能只能覆盖头部贡献者。</div>`;
+    container.innerHTML = `<div class="loading">还没有 GitHub 映射资料。请检查导出站点 users.csv 是否包含 gh_login、gh_name、gh_avatar 字段。</div>`;
     return;
   }
   container.innerHTML = entries.map(([name, value]) => `
@@ -1168,7 +1168,7 @@ function renderContributors() {
 async function load(force = false) {
   els.refreshBtn.disabled = true;
   els.statusPill.textContent = force ? "刷新中" : "分析中";
-  els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">正在拉取 mooncakes.io 数据并生成今日快照...</div>`;
+  els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">正在拉取 business-analytics 导出数据并生成今日快照...</div>`;
   try {
     state.snapshot = await fetchSnapshot(force);
     state.analysis = analyze(state.snapshot);
