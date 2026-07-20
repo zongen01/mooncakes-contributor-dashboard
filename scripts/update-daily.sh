@@ -5,7 +5,7 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export MOONCAKES_EXPORTS_BASE_URL="http://192.168.86.2:18080"
 
-repo_dir="/Users/zongen/Documents/New project/mooncakes-contributor-dashboard"
+repo_dir="${MOONCAKES_DASHBOARD_REPO_DIR:-/Users/zongen/Documents/New project/mooncakes-contributor-dashboard}"
 temp_root="$(mktemp -d /tmp/mooncakes-dashboard-update.XXXXXX)"
 worktree_dir="$temp_root/repo"
 

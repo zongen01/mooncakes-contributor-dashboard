@@ -7,8 +7,15 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/zongen/Documents/New project/mooncakes-contributor-dashboard/scripts/update-daily.sh</string>
+    <string>/Users/zongen/Library/Application Support/MooncakesDashboard/update-daily.sh</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/zongen</string>
+    <key>MOONCAKES_DASHBOARD_REPO_DIR</key>
+    <string>/Users/zongen/Library/Application Support/MooncakesDashboard/repo</string>
+  </dict>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
