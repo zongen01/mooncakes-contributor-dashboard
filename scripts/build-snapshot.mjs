@@ -34,7 +34,7 @@ function truncate(value, max = 280) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows) {
+function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows, registrationWindow) {
   const owners = new Map();
   const recent7Owners = new Set();
   const recent7Modules = [];
@@ -105,6 +105,9 @@ function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHi
     previous7_version_release_count: Number(previousWindow.version_release_count ?? 0),
     previous7_new_module_count: Number(previousWindow.new_module_count ?? 0),
     previous7_new_owner_count: Number(previousWindow.new_owner_count ?? 0),
+    previous_week_registered_count: Number(registrationWindow.registered_count ?? 0),
+    previous_week_contributed_count: Number(registrationWindow.contributed_count ?? 0),
+    previous_week_no_contribution_count: Number(registrationWindow.no_contribution_count ?? 0),
     recent7_latest_module_count: recent7Modules.length,
     owner_history_count: Object.keys(ownerHistory).length,
     module_history_count: Object.keys(moduleHistory).length,
@@ -115,7 +118,8 @@ function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHi
   };
 }
 
-function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHistory, publicationWindows, sourceIntegrity, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHistory, publicationWindows, registrationWindow, registeredNonContributors, sourceIntegrity, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+  const registeredContributorOverlap = registeredNonContributors.filter((user) => ownerHistory[user.username]).length;
   const checks = [
     {
       id: "modules_count_matches_statistics",
@@ -164,6 +168,38 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHis
       expected: owners.length,
       actual: Object.keys(ownerHistory).length,
       passed: owners.length === Object.keys(ownerHistory).length
+    },
+    {
+      id: "registration_cohort_count_matches",
+      label: "上周注册未贡献列表数量与注册窗口汇总一致",
+      severity: "error",
+      expected: Number(registrationWindow.no_contribution_count ?? 0),
+      actual: registeredNonContributors.length,
+      passed: registeredNonContributors.length === Number(registrationWindow.no_contribution_count ?? 0)
+    },
+    {
+      id: "registration_cohort_has_no_contributors",
+      label: "注册未贡献列表与非撤回贡献 owner 无重叠",
+      severity: "error",
+      expected: 0,
+      actual: registeredContributorOverlap,
+      passed: registeredContributorOverlap === 0
+    },
+    {
+      id: "registration_dates_valid",
+      label: "注册时间转换为 UTC 后有效且不晚于快照日期",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.invalid_signup_time_count ?? 0) + Number(sourceIntegrity.future_signup_time_count ?? 0) + Number(sourceIntegrity.contribution_before_registration_count ?? 0),
+      passed: Number(sourceIntegrity.invalid_signup_time_count ?? 0) + Number(sourceIntegrity.future_signup_time_count ?? 0) + Number(sourceIntegrity.contribution_before_registration_count ?? 0) === 0
+    },
+    {
+      id: "missing_registration_dates_recorded",
+      label: "源站缺失注册时间的历史账号已记录",
+      severity: "info",
+      expected: "recorded",
+      actual: Number(sourceIntegrity.missing_signup_time_count ?? 0),
+      passed: true
     },
     {
       id: "module_first_seen_parseable",
@@ -567,6 +603,8 @@ async function main() {
   const moduleHistory = exportSnapshot.module_history || {};
   const ownerHistory = exportSnapshot.owner_history || {};
   const publicationWindows = exportSnapshot.publication_windows || {};
+  const registrationWindow = exportSnapshot.registration_window || {};
+  const registeredNonContributors = exportSnapshot.registered_non_contributors || [];
   const sourceIntegrity = exportSnapshot.source_integrity || {};
 
   const ownerCounts = new Map();
@@ -581,7 +619,7 @@ async function main() {
   const failed = 0;
   const notFound = Object.values(githubProfiles).filter((profile) => profile?.exists === false).length;
   const ai = await buildAiPortraits(modules, githubProfiles, snapshotDate, ownerHistory);
-  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows);
+  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows, registrationWindow);
   const dataQuality = buildDataQuality({
     modules,
     statistics,
@@ -589,6 +627,8 @@ async function main() {
     ownerHistory,
     moduleHistory,
     publicationWindows,
+    registrationWindow,
+    registeredNonContributors,
     sourceIntegrity,
     githubProfiles,
     githubFailed: failed,
@@ -613,6 +653,8 @@ async function main() {
     module_history: moduleHistory,
     owner_history: ownerHistory,
     publication_windows: publicationWindows,
+    registration_window: registrationWindow,
+    registered_non_contributors: registeredNonContributors,
     source_integrity: sourceIntegrity,
     statistics,
     derived_metrics: derivedMetrics,
@@ -634,7 +676,7 @@ async function main() {
 
   await mkdir(path.dirname(outputFile), { recursive: true });
   await writeFile(outputFile, JSON.stringify(snapshot, null, 2));
-  console.log(`Wrote ${outputFile}: ${modules.length} modules, ${owners.length} owners from business-analytics exports`);
+  console.log(`Wrote ${outputFile}: ${modules.length} modules, ${owners.length} owners, ${registeredNonContributors.length} prior-week registrations without contributions`);
 }
 
 main().catch((error) => {

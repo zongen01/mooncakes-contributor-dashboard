@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mooncakes 贡献者每日分析</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-newcomer-insights">
+    <link rel="stylesheet" href="styles.css?v=20260720-registration-cohort">
   </head>
   <body>
     <main class="app-shell">
@@ -26,8 +26,8 @@
         <article class="panel span-12 new-user-contribution-panel">
           <div class="panel-head">
             <div>
-              <h2>新用户贡献</h2>
-              <p>按 owner 首次发布模块识别新用户，集中查看近 7 天的首次贡献时间、模块和当前下载量；所有时间均为 UTC。</p>
+              <h2>新用户贡献与待转化</h2>
+              <p>贡献者按 owner 首次发布模块识别；上一完整 UTC 周已注册但没有非撤回包记录的用户单独标记，不混入贡献人数。</p>
             </div>
             <span class="timezone-badge">UTC</span>
           </div>
@@ -37,6 +37,16 @@
             <span id="newUserContributionNote" class="subtle"></span>
           </div>
           <div id="newUserContributionRows" class="new-user-contribution-list"></div>
+          <section class="registration-watch">
+            <div class="section-title-row registration-watch-head">
+              <div>
+                <h3>上周新注册但尚未贡献</h3>
+                <p>只展示脱敏用户名、UTC 注册日期和可选的公开 GitHub 映射。</p>
+              </div>
+              <span id="registeredNoContributionNote" class="subtle"></span>
+            </div>
+            <div id="registeredNoContributionRows" class="registration-watch-grid"></div>
+          </section>
         </article>
 
         <article class="panel span-12">
@@ -192,6 +202,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260720-publication-audit-v2" type="module"></script>
+    <script src="app.js?v=20260720-registration-cohort" type="module"></script>
   </body>
 </html>

@@ -606,7 +606,7 @@ tr:last-child td {
 
 .new-user-contribution-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -738,6 +738,71 @@ tr:last-child td {
 .new-user-contribution-stats span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.registration-watch {
+  margin-top: 20px;
+  border-top: 1px solid rgba(184, 138, 45, 0.24);
+  padding-top: 16px;
+}
+
+.registration-watch-head {
+  align-items: flex-end;
+}
+
+.registration-watch-head p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.registration-watch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.registration-watch-card {
+  min-width: 0;
+  border: 1px solid rgba(184, 138, 45, 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(184, 138, 45, 0.09), transparent 52%),
+    rgba(255, 255, 255, 0.92);
+  padding: 12px;
+}
+
+.registration-watch-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.registration-watch-card-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.registration-watch-card p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.registration-status {
+  flex: 0 0 auto;
+  border: 1px solid rgba(184, 138, 45, 0.34);
+  border-radius: 999px;
+  background: rgba(184, 138, 45, 0.12);
+  color: #7a5715;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .newcomer-summary-grid {
@@ -1094,6 +1159,10 @@ tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .registration-watch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .new-user-contribution-card {
     grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
   }
@@ -1144,6 +1213,7 @@ tr:last-child td {
 
   .newcomer-summary-grid,
   .new-user-contribution-summary,
+  .registration-watch-grid,
   .newcomer-bars,
   .newcomer-insight-grid,
   .newcomer-focus-grid,

@@ -10,6 +10,8 @@ const ownerHistory = snapshot.owner_history || {};
 const statistics = snapshot.statistics || {};
 const derived = snapshot.derived_metrics || {};
 const windows = snapshot.publication_windows || {};
+const registrationWindow = snapshot.registration_window || {};
+const registeredNonContributors = snapshot.registered_non_contributors || [];
 const sourceIntegrity = snapshot.source_integrity || {};
 
 function ownerOf(moduleName) {
@@ -33,6 +35,13 @@ function utcDateOffset(date, offset) {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + offset);
   return parsed.toISOString().slice(0, 10);
+}
+
+function previousUtcCalendarWeek(snapshotDate) {
+  const current = new Date(`${snapshotDate}T00:00:00Z`);
+  const weekday = current.getUTCDay() || 7;
+  const thisMonday = utcDateOffset(snapshotDate, -(weekday - 1));
+  return { from: utcDateOffset(thisMonday, -7), to: utcDateOffset(thisMonday, -1) };
 }
 
 function assert(condition, message) {
@@ -109,12 +118,32 @@ for (const field of [
   "orphan_download_module_count",
   "invalid_download_value_count",
   "invalid_download_updated_at_count",
-  "owner_without_user_row_count"
+  "owner_without_user_row_count",
+  "invalid_signup_time_count",
+  "future_signup_time_count",
+  "contribution_before_registration_count"
 ]) {
   assert(Number(sourceIntegrity[field] ?? 0) === 0, `source integrity failed: ${field}=${sourceIntegrity[field]}`);
 }
 assert(Number.isFinite(Date.parse(sourceIntegrity.download_updated_at_max)), "download_updated_at_max is invalid");
 assert(Date.parse(sourceIntegrity.download_updated_at_max) <= Date.parse(snapshot.captured_at), "download data timestamp is later than snapshot capture");
+
+const expectedRegistrationWindow = previousUtcCalendarWeek(snapshot.date);
+assert(registrationWindow.from === expectedRegistrationWindow.from, "registration window from boundary mismatch");
+assert(registrationWindow.to === expectedRegistrationWindow.to, "registration window to boundary mismatch");
+assert(registrationWindow.source_timezone === "Asia/Shanghai", `unexpected registration source timezone: ${registrationWindow.source_timezone}`);
+assert(registrationWindow.display_timezone === "UTC", `unexpected registration display timezone: ${registrationWindow.display_timezone}`);
+assert(Number(registrationWindow.registered_count) === Number(registrationWindow.enabled_registered_count) + Number(registrationWindow.disabled_registered_count), "registration enabled/disabled totals do not reconcile");
+assert(Number(registrationWindow.enabled_registered_count) === Number(registrationWindow.contributed_count) + Number(registrationWindow.no_contribution_count), "registration contribution totals do not reconcile");
+assert(registeredNonContributors.length === Number(registrationWindow.no_contribution_count), "registered non-contributor count mismatch");
+assert(new Set(registeredNonContributors.map((user) => user.username)).size === registeredNonContributors.length, "registered non-contributor list contains duplicate usernames");
+for (const user of registeredNonContributors) {
+  assert(user.status === "registered_no_contribution", `unexpected registration status: ${user.username}`);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(user.registered_on || ""), `invalid registered_on: ${user.username}`);
+  assert(user.registered_on >= registrationWindow.from && user.registered_on <= registrationWindow.to, `registration outside prior week: ${user.username}`);
+  assert(!ownerHistory[user.username], `registered non-contributor has publication history: ${user.username}`);
+  assert(!user.github_url || user.github_url === `https://github.com/${encodeURIComponent(user.github_login)}`, `GitHub mapping mismatch: ${user.username}`);
+}
 
 const ownerRollup = new Map();
 for (const module of modules) {
@@ -181,6 +210,9 @@ assert(Number(derived.previous7_active_module_count) === Number(windows.previous
 assert(Number(derived.previous7_version_release_count) === Number(windows.previous7.version_release_count), "derived previous releases mismatch");
 assert(Number(derived.previous7_new_module_count) === Number(windows.previous7.new_module_count), "derived previous new modules mismatch");
 assert(Number(derived.previous7_new_owner_count) === Number(windows.previous7.new_owner_count), "derived previous new owners mismatch");
+assert(Number(derived.previous_week_registered_count) === Number(registrationWindow.registered_count), "derived prior-week registrations mismatch");
+assert(Number(derived.previous_week_contributed_count) === Number(registrationWindow.contributed_count), "derived prior-week contributors mismatch");
+assert(Number(derived.previous_week_no_contribution_count) === Number(registrationWindow.no_contribution_count), "derived prior-week non-contributors mismatch");
 assert(dayKey(ownerHistory["brother-666"]?.first_seen) <= "2026-07-06", "brother-666 newcomer regression detected");
 
 console.log(JSON.stringify({
@@ -190,5 +222,6 @@ console.log(JSON.stringify({
   versions: statistics.total_versions,
   recent7: windows.recent7,
   previous7: windows.previous7,
+  registration: registrationWindow,
   quality: snapshot.data_quality.status
 }));

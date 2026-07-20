@@ -14,6 +14,8 @@ const els = {
   newUserContributionSummary: document.querySelector("#newUserContributionSummary"),
   newUserContributionNote: document.querySelector("#newUserContributionNote"),
   newUserContributionRows: document.querySelector("#newUserContributionRows"),
+  registeredNoContributionNote: document.querySelector("#registeredNoContributionNote"),
+  registeredNoContributionRows: document.querySelector("#registeredNoContributionRows"),
   dailyChart: document.querySelector("#dailyChart"),
   dailyRows: document.querySelector("#dailyRows"),
   issueList: document.querySelector("#issueList"),
@@ -725,6 +727,7 @@ function render() {
   if (!analysis) return;
   renderSummary();
   renderNewUserContributions();
+  renderRegisteredNonContributors();
   renderDaily();
   renderIssues();
   renderNewcomers();
@@ -786,12 +789,14 @@ function renderNewUserContributions() {
   const downloads = rows.reduce((sum, row) => sum + row.modules.reduce((subtotal, module) => subtotal + Number(module.downloads || 0), 0), 0);
   const repeatPublishers = people.filter((person) => person.versionCount > 1).length;
   const recentWindow = state.snapshot.publication_windows?.recent7 || {};
+  const registrationWindow = state.snapshot.registration_window || {};
   const recentWindowLabel = recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to} UTC` : "当前 7 个 UTC 自然日";
   const summary = [
     ["UTC 今日新用户", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次贡献`],
     ["近 7 天新用户", fmtNumber(people.length), `${recentWindowLabel}，按 owner 历史首次贡献`],
     ["贡献模块", fmtNumber(moduleCount), "这些新用户在近 7 天发布的模块"],
-    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(repeatPublishers)} 位新用户已有第 2 次版本发布`]
+    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(repeatPublishers)} 位新用户已有第 2 次版本发布`],
+    ["上周注册未贡献", fmtNumber(registrationWindow.no_contribution_count ?? 0), registrationWindow.from && registrationWindow.to ? `${registrationWindow.from} 至 ${registrationWindow.to} UTC，单独标记` : "上一完整 UTC 自然周"]
   ];
 
   els.newUserContributionSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -842,6 +847,39 @@ function renderNewUserContributions() {
           <div><strong>${fmtNumber(person.versionCount)}</strong><span>版本发布</span></div>
           <div><strong>${fmtNumber(contributionDownloads)}</strong><span>当前下载</span></div>
         </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderRegisteredNonContributors() {
+  if (!els.registeredNoContributionRows) return;
+  const window = state.snapshot.registration_window || {};
+  const users = state.snapshot.registered_non_contributors || [];
+  const range = window.from && window.to ? `${window.from} 至 ${window.to} UTC` : "上一完整 UTC 自然周";
+
+  if (els.registeredNoContributionNote) {
+    els.registeredNoContributionNote.textContent = `${range} · 注册 ${fmtNumber(window.enabled_registered_count ?? window.registered_count ?? 0)} 人 · 尚未贡献 ${fmtNumber(users.length)} 人`;
+  }
+  if (!users.length) {
+    els.registeredNoContributionRows.innerHTML = `<div class="loading">上周没有已注册但尚未贡献的用户。</div>`;
+    return;
+  }
+
+  els.registeredNoContributionRows.innerHTML = users.map((user) => {
+    const username = externalLink(user.github_url, user.username);
+    const githubNote = user.github_login
+      ? `公开 GitHub 映射：${externalLink(user.github_url, user.github_login)}`
+      : "公开 GitHub 映射：暂无";
+    return `
+      <article class="registration-watch-card">
+        <div class="registration-watch-card-head">
+          <strong>${username}</strong>
+          <span class="registration-status">已注册 · 尚未贡献</span>
+        </div>
+        <p>注册日期 ${escapeHtml(user.registered_on)} UTC · 距快照 ${fmtNumber(daysBetween(user.registered_on, state.snapshot.date))} 天</p>
+        <p>${githubNote}</p>
+        <p>截至快照未发现非撤回模块或版本记录。</p>
       </article>
     `;
   }).join("");
@@ -1151,11 +1189,14 @@ function renderDataReconciliation() {
   const quality = s.data_quality || {};
   const integrity = s.source_integrity || {};
   const recentWindow = s.publication_windows?.recent7 || {};
+  const registrationWindow = s.registration_window || {};
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
   const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), s.date)).length, 0);
   const cards = [
     ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
     ["近7天 UTC 窗口", recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to}` : "未记录", "首尾日期均包含，共 7 个 UTC 自然日；第 8 个日期不计入。"],
+    ["上周 UTC 注册窗口", registrationWindow.from && registrationWindow.to ? `${registrationWindow.from} 至 ${registrationWindow.to}` : "未记录", `上一完整 UTC 自然周注册 ${fmtNumber(registrationWindow.enabled_registered_count ?? 0)} 人，其中已贡献 ${fmtNumber(registrationWindow.contributed_count ?? 0)} 人。`],
+    ["上周注册未贡献", fmtNumber(registrationWindow.no_contribution_count ?? 0), "没有任何非撤回模块或版本记录；只进入待转化列表，不计入贡献者人数。"],
     ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `导出站点当前拼出 ${fmtNumber(derived.module_array_count || a.modules.length)} 条最新模块；必须等于 statistics.total_modules。`],
     ["当前子包数量", fmtNumber(a.stats.total_packages || 0), "各模块最新有效版本的 package_count 之和，不是版本记录数。"],
     ["大小字段缺失", `${fmtNumber(Math.max(Number(integrity.latest_module_missing_line_count ?? 0), Number(integrity.latest_module_missing_package_count ?? 0)))} 个模块`, `源站当前版本中 line_count 缺失 ${fmtNumber(integrity.latest_module_missing_line_count ?? 0)} 个、package_count 缺失 ${fmtNumber(integrity.latest_module_missing_package_count ?? 0)} 个；汇总时空值按 0。`],
