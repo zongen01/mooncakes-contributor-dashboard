@@ -33,7 +33,7 @@
           </div>
           <div class="new-user-contribution-summary" id="newUserContributionSummary"></div>
           <div class="section-title-row new-user-list-head">
-            <h3>近 7 天新用户贡献明细</h3>
+            <h3>上周新增贡献者明细</h3>
             <span id="newUserContributionNote" class="subtle"></span>
           </div>
           <div id="newUserContributionRows" class="new-user-contribution-list"></div>
@@ -53,7 +53,7 @@
           <div class="panel-head">
             <div>
               <h2>新增贡献者画像</h2>
-              <p>当前统计窗口统一为近 7 天：只看近 7 天首次出现的 owner；可选用 AI 综合 GitHub 公开字段与模块元数据，低置信会标出。</p>
+              <p>画像对象统一为上一完整 UTC 自然周首次贡献的 owner；画像字段取当前公开 GitHub 资料与累计贡献状态，低置信会标出。</p>
             </div>
           </div>
           <div class="newcomer-layout">
@@ -74,15 +74,15 @@
             </div>
             <div class="newcomer-bars">
               <div>
-                <h3>近7天新增 owner 公开地区分布</h3>
+                <h3>上周新增 owner 公开地区分布</h3>
                 <div id="newcomerLocationList" class="bar-list"></div>
               </div>
               <div>
-                <h3>近7天新增 owner 公开身份线索</h3>
+                <h3>上周新增 owner 公开身份线索</h3>
                 <div id="newcomerIdentityList" class="bar-list"></div>
               </div>
               <div>
-                <h3>近7天新增 owner 来源线索</h3>
+                <h3>上周新增 owner 来源线索</h3>
                 <div id="newcomerSourceList" class="bar-list"></div>
               </div>
             </div>
@@ -101,7 +101,7 @@
           <div class="panel-head">
             <div>
               <h2>数据口径对齐</h2>
-              <p>解释为什么贡献者人数、近 7 天新增 owner 和 Mooncakes 导出模块/包数量不是同一个数。</p>
+              <p>解释为什么贡献者总人数、上周新增 owner、滚动 7 天活跃数据和 Mooncakes 导出模块/包数量不是同一个数。</p>
             </div>
           </div>
           <div id="dataReconcileList" class="reconcile-grid"></div>
@@ -202,6 +202,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260720-registration-cohort" type="module"></script>
+    <script src="app.js?v=20260720-utc-week" type="module"></script>
   </body>
 </html>

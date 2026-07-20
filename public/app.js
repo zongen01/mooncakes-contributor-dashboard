@@ -80,6 +80,24 @@ function isWithinUtcWindow(dateLike, snapshotDate, days = ANALYSIS_DAYS) {
   return age >= 0 && age < days;
 }
 
+function previousCompleteUtcWeek(snapshotDate) {
+  const snapshotDay = new Date(`${dayKey(snapshotDate)}T00:00:00Z`);
+  if (Number.isNaN(snapshotDay.getTime())) return { from: "", to: "" };
+  const weekday = snapshotDay.getUTCDay() || 7;
+  const currentMonday = new Date(snapshotDay);
+  currentMonday.setUTCDate(currentMonday.getUTCDate() - (weekday - 1));
+  const from = new Date(currentMonday);
+  const to = new Date(currentMonday);
+  from.setUTCDate(from.getUTCDate() - 7);
+  to.setUTCDate(to.getUTCDate() - 1);
+  return { from: dayKey(from), to: dayKey(to) };
+}
+
+function isWithinUtcRange(dateLike, window) {
+  const date = dayKey(dateLike);
+  return Boolean(window?.from && window?.to && date >= window.from && date <= window.to);
+}
+
 function ownerOf(moduleName) {
   return String(moduleName || "").split("/")[0] || "(unknown)";
 }
@@ -564,7 +582,8 @@ function analyze(snapshot) {
     previous7Count,
     categories,
     githubMeta,
-    snapshot
+    snapshot,
+    newcomers
   });
 
   return {
@@ -593,10 +612,10 @@ function analyze(snapshot) {
 }
 
 function buildNewcomerAnalysis(contributors, snapshotDate) {
-  const in7 = contributors
-    .filter((person) => isWithinUtcWindow(person.first, snapshotDate))
+  const window = previousCompleteUtcWeek(snapshotDate);
+  const previousWeek = contributors
+    .filter((person) => isWithinUtcRange(person.first, window))
     .sort((a, b) => b.first.localeCompare(a.first) || b.count - a.count || a.owner.localeCompare(b.owner));
-  const today = in7.filter((person) => person.first === snapshotDate);
   const locations = {};
   const identities = {};
   const sources = {};
@@ -610,7 +629,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   let singleModule = 0;
   let singleRelease = 0;
 
-  for (const person of in7) {
+  for (const person of previousWeek) {
     if (person.profile) withProfile += 1;
     if (person.aiPortrait) withAi += 1;
     locations[person.location] = (locations[person.location] || 0) + 1;
@@ -622,14 +641,15 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     if ((person.aiPortrait?.confidence || 0) >= 0.66) highConfidenceAi += 1;
     if (person.count === 1) singleModule += 1;
     if (person.versionCount === 1) singleRelease += 1;
-    for (const [category, count] of person.topCategories) {
-      categories[category] = (categories[category] || 0) + count;
+    for (const module of person.modules.filter((item) => isWithinUtcRange(moduleFirstPublishedAt(item), window))) {
+      const category = categoryFor(module);
+      categories[category] = (categories[category] || 0) + 1;
     }
   }
 
   return {
-    in7,
-    today,
+    previousWeek,
+    window,
     locations,
     identities,
     sources,
@@ -650,7 +670,7 @@ function buildIssues(context) {
   const recentContributors = context.contributors.filter((person) => person.recent7 > 0);
   const total = recentModules.length || 1;
   const activeOwnerTotal = recentContributors.length || 1;
-  const newcomerContributors = recentContributors.filter((person) => isWithinUtcWindow(person.first, context.snapshot.date));
+  const newcomerContributors = context.newcomers.previousWeek;
   const newcomerOwnerTotal = newcomerContributors.length || 1;
   const issues = [];
   const top10Share = recentContributors
@@ -681,8 +701,8 @@ function buildIssues(context) {
   if (singleShare >= 0.5) {
     issues.push({
       severity: "medium",
-      title: `近 7 天新增 owner 单模块占比 ${fmtPct(singleShare)}`,
-      body: `${singleOwners} / ${newcomerContributors.length} 位新增 owner 目前只发布 1 个模块。可以补发布模板、包质量反馈、每周推荐来推动第二次贡献。`
+      title: `上周新增 owner 单模块占比 ${fmtPct(singleShare)}`,
+      body: `${singleOwners} / ${newcomerContributors.length} 位上周新增 owner 目前只发布 1 个模块。可以补发布模板、包质量反馈、每周推荐来推动第二次贡献。`
     });
   }
   if (missingRepoShare >= 0.18) {
@@ -742,8 +762,8 @@ function renderSummary() {
   const a = state.analysis;
   const s = state.snapshot;
   const derived = s.derived_metrics || {};
-  const recentWindow = s.publication_windows?.recent7 || {};
-  const recentWindowLabel = recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to} UTC` : "当前 7 个 UTC 自然日";
+  const previousWeek = a.newcomers.window;
+  const previousWeekLabel = previousWeek.from && previousWeek.to ? `${previousWeek.from} 至 ${previousWeek.to} UTC` : "上一完整 UTC 自然周";
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
   const active7Total = active7.length || 1;
   const activeModuleTotal = Number(derived.recent7_active_module_count ?? active7.reduce((sum, person) => sum + person.recent7, 0)) || 1;
@@ -756,8 +776,8 @@ function renderSummary() {
   const active7Single = active7.filter((person) => person.count === 1).length;
   const metrics = [
     ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count ?? active7.length), `${fmtNumber(activeModuleTotal)} 个活跃模块 · ${fmtNumber(derived.recent7_version_release_count ?? 0)} 次版本发布`],
-    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), `${recentWindowLabel} 首次发布模块的 owner`],
-    ["近7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "首次发布时间落在当前 UTC 窗口"],
+    ["上周新增 owner", fmtNumber(a.newcomers.previousWeek.length), `${previousWeekLabel}，按历史首次贡献统计`],
+    ["滚动7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "首次发布时间落在当前滚动 UTC 窗口"],
     ["近7天 GitHub 覆盖", fmtPct(active7Github / active7Total), `${fmtNumber(active7Github)} / ${fmtNumber(active7.length)} 个活跃 owner 可用`],
     ["近7天 Top10 占比", fmtPct(recent7Top10 / activeModuleTotal), `Top 10 覆盖 ${fmtNumber(recent7Top10)} 个近 7 天活跃模块`],
     ["近7天单模块 owner", fmtPct(active7Single / active7Total), `${fmtNumber(active7Single)} 个活跃 owner 当前只有 1 个模块`]
@@ -773,30 +793,29 @@ function renderSummary() {
   els.statusPill.textContent = `${cachedText} · ${fmtUtcDateTime(s.captured_at)}`;
 }
 
-function recentNewUserModules(person) {
+function previousWeekNewUserModules(person) {
+  const window = state.analysis.newcomers.window;
   return person.modules
-    .filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date))
+    .filter((module) => isWithinUtcRange(moduleFirstPublishedAt(module), window))
     .sort((left, right) => Date.parse(moduleFirstPublishedAt(right)) - Date.parse(moduleFirstPublishedAt(left)) || String(left.name).localeCompare(String(right.name)));
 }
 
 function renderNewUserContributions() {
   if (!els.newUserContributionSummary || !els.newUserContributionRows) return;
   const newcomers = state.analysis.newcomers;
-  const people = newcomers.in7;
-  const rows = people.map((person) => ({ person, modules: recentNewUserModules(person) }));
+  const people = newcomers.previousWeek;
+  const rows = people.map((person) => ({ person, modules: previousWeekNewUserModules(person) }));
   const visibleRows = rows.slice(0, 60);
   const moduleCount = rows.reduce((sum, row) => sum + row.modules.length, 0);
-  const downloads = rows.reduce((sum, row) => sum + row.modules.reduce((subtotal, module) => subtotal + Number(module.downloads || 0), 0), 0);
-  const repeatPublishers = people.filter((person) => person.versionCount > 1).length;
-  const recentWindow = state.snapshot.publication_windows?.recent7 || {};
   const registrationWindow = state.snapshot.registration_window || {};
-  const recentWindowLabel = recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to} UTC` : "当前 7 个 UTC 自然日";
+  const previousWeekLabel = newcomers.window.from && newcomers.window.to ? `${newcomers.window.from} 至 ${newcomers.window.to} UTC` : "上一完整 UTC 自然周";
+  const registrationWindowLabel = registrationWindow.from && registrationWindow.to ? `${registrationWindow.from} 至 ${registrationWindow.to} UTC` : "上一完整 UTC 自然周";
   const summary = [
-    ["UTC 今日新用户", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次贡献`],
-    ["近 7 天新用户", fmtNumber(people.length), `${recentWindowLabel}，按 owner 历史首次贡献`],
-    ["贡献模块", fmtNumber(moduleCount), "这些新用户在近 7 天发布的模块"],
-    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(repeatPublishers)} 位新用户已有第 2 次版本发布`],
-    ["上周注册未贡献", fmtNumber(registrationWindow.no_contribution_count ?? 0), registrationWindow.from && registrationWindow.to ? `${registrationWindow.from} 至 ${registrationWindow.to} UTC，单独标记` : "上一完整 UTC 自然周"]
+    ["上周新增贡献者", fmtNumber(people.length), `${previousWeekLabel}，按 owner 历史首次贡献`],
+    ["上周贡献模块", fmtNumber(moduleCount), "这些新增贡献者在上周首次发布的模块"],
+    ["上周注册用户", fmtNumber(registrationWindow.enabled_registered_count ?? registrationWindow.registered_count ?? 0), registrationWindowLabel],
+    ["上周注册已贡献", fmtNumber(registrationWindow.contributed_count ?? 0), "注册窗口内已有非撤回贡献记录"],
+    ["上周注册未贡献", fmtNumber(registrationWindow.no_contribution_count ?? 0), "单独标记，不计入贡献者人数"]
   ];
 
   els.newUserContributionSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -809,11 +828,11 @@ function renderNewUserContributions() {
 
   if (els.newUserContributionNote) {
     const visibleNote = rows.length > visibleRows.length ? ` · 显示前 ${fmtNumber(visibleRows.length)} 位` : "";
-    els.newUserContributionNote.textContent = `${fmtNumber(people.length)} 位新用户 · ${fmtNumber(moduleCount)} 个模块${visibleNote} · 截止 ${fmtUtcDateTime(state.snapshot.captured_at)}`;
+    els.newUserContributionNote.textContent = `${previousWeekLabel} · ${fmtNumber(people.length)} 位新增贡献者 · ${fmtNumber(moduleCount)} 个首发模块${visibleNote} · 截止 ${fmtUtcDateTime(state.snapshot.captured_at)}`;
   }
 
   if (!rows.length) {
-    els.newUserContributionRows.innerHTML = `<div class="loading">近 7 天暂无首次贡献的新用户。</div>`;
+    els.newUserContributionRows.innerHTML = `<div class="loading">上周暂无首次贡献的新用户。</div>`;
     return;
   }
 
@@ -843,8 +862,8 @@ function renderNewUserContributions() {
         </div>
         <ul class="new-user-module-list">${moduleHtml}</ul>
         <div class="new-user-contribution-stats">
-          <div><strong>${fmtNumber(modules.length)}</strong><span>近7天模块</span></div>
-          <div><strong>${fmtNumber(person.versionCount)}</strong><span>版本发布</span></div>
+          <div><strong>${fmtNumber(modules.length)}</strong><span>上周首发模块</span></div>
+          <div><strong>${fmtNumber(person.versionCount)}</strong><span>累计版本</span></div>
           <div><strong>${fmtNumber(contributionDownloads)}</strong><span>当前下载</span></div>
         </div>
       </article>
@@ -960,9 +979,9 @@ function renderIssues() {
   `).join("");
 }
 
-function aiMetaNote(aiMeta, total) {
+function aiMetaNote(aiMeta, total, covered) {
   if (aiMeta?.enabled) {
-    return `${fmtNumber(aiMeta.succeeded || 0)} / ${fmtNumber(total)} 人，模型 ${aiMeta.model || "未记录"}，窗口 ${fmtNumber(aiMeta.window_days || 7)} 天`;
+    return `${fmtNumber(covered)} / ${fmtNumber(total)} 人已有 AI 画像，模型 ${aiMeta.model || "未记录"}`;
   }
   if (aiMeta?.reason === "RUN_AI_PORTRAITS not enabled") return "未手动触发 AI，当前使用规则画像";
   if (aiMeta?.reason === "OPENAI_API_KEY not configured") return "未配置 OPENAI_API_KEY，当前使用规则画像";
@@ -972,16 +991,16 @@ function aiMetaNote(aiMeta, total) {
 
 function renderNewcomerInsights(newcomers) {
   if (!els.newcomerInsightList || !els.newcomerFocusList) return;
-  const people = newcomers.in7;
+  const people = newcomers.previousWeek;
   const total = people.length;
   if (!total) {
-    els.newcomerInsightList.innerHTML = `<div class="loading">近 7 天暂无新用户，暂时无法形成群体结论。</div>`;
+    els.newcomerInsightList.innerHTML = `<div class="loading">上周暂无新增贡献者，暂时无法形成群体结论。</div>`;
     els.newcomerFocusList.innerHTML = `<div class="loading">暂无重点观察对象。</div>`;
     if (els.newcomerFocusNote) els.newcomerFocusNote.textContent = "";
     return;
   }
 
-  const recentModules = people.flatMap((person) => recentNewUserModules(person));
+  const recentModules = people.flatMap((person) => previousWeekNewUserModules(person));
   const topCategory = topEntries(newcomers.categories, 1)[0];
   const singleShare = newcomers.singleRelease / total;
   const repeatPublishers = total - newcomers.singleRelease;
@@ -1024,7 +1043,7 @@ function renderNewcomerInsights(newcomers) {
       value: topCategory ? topCategory[0] : "暂无",
       title: topCategory ? `主方向占新增模块 ${fmtPct(categoryShare)}` : "暂无可归类方向",
       body: topCategory
-        ? `${fmtNumber(topCategory[1])} / ${fmtNumber(recentModules.length)} 个近 7 天新增模块归入该方向。`
+        ? `${fmtNumber(topCategory[1])} / ${fmtNumber(recentModules.length)} 个上周新增模块归入该方向。`
         : "当前窗口没有足够模块形成方向结论。",
       action: topCategory ? `可围绕“${topCategory[0]}”组织案例征集或专题交流。` : "继续积累样本后再判断。",
       tone: "info"
@@ -1080,7 +1099,7 @@ function renderNewcomerInsights(newcomers) {
 
   els.newcomerFocusList.innerHTML = visiblePeople.map((person) => {
     const priority = person.portrait?.priority || "P2";
-    const modules = recentNewUserModules(person);
+    const modules = previousWeekNewUserModules(person);
     const downloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
     const owner = externalLink(person.profile?.html_url, person.owner);
     return `
@@ -1095,7 +1114,7 @@ function renderNewcomerInsights(newcomers) {
         </div>
         <p>${escapeHtml(person.portrait?.priorityReason || "先观察模块质量与后续发布")}</p>
         <div class="newcomer-focus-metrics">
-          <span><strong>${fmtNumber(modules.length)}</strong> 近7天新增模块</span>
+          <span><strong>${fmtNumber(modules.length)}</strong> 上周新增模块</span>
           <span><strong>${fmtNumber(downloads)}</strong> 当前下载</span>
           <span><strong>${fmtPct(person.portrait?.repoRatio || 0, 0)}</strong> repo</span>
         </div>
@@ -1107,20 +1126,20 @@ function renderNewcomerInsights(newcomers) {
 
 function renderNewcomers() {
   const newcomers = state.analysis.newcomers;
-  const in7 = newcomers.in7;
+  const people = newcomers.previousWeek;
+  const windowLabel = newcomers.window.from && newcomers.window.to ? `${newcomers.window.from} 至 ${newcomers.window.to} UTC` : "上一完整 UTC 自然周";
   const topCategory = topEntries(newcomers.categories, 1)[0];
   const aiMeta = state.analysis.aiMeta || {};
   const summary = [
-    ["统计窗口", "近 7 天", `本区所有占比的分母都是近 7 天新增 owner：${fmtNumber(in7.length)} 人`],
-    ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次出现的 owner`],
-    ["近 7 天新增人员", fmtNumber(in7.length), `近 7 天首次出现的 owner`],
-    ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMetaNote(aiMeta, in7.length)],
-    ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
-    ["近7天可判定地区人数", fmtPct(in7.length ? newcomers.withLocation / in7.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in7.length)} 个新增 owner 的公开 location 可归类`],
-    ["近7天高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} / ${fmtNumber(in7.length)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
-    ["近7天仅1次发布占比", fmtPct(in7.length ? newcomers.singleRelease / in7.length : 0), `${fmtNumber(newcomers.singleRelease)} / ${fmtNumber(in7.length)} 人目前只有 1 次版本发布`],
-    ["近7天新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `近 7 天新增 owner 模块中 ${fmtNumber(topCategory[1])} 个命中` : "近 7 天暂无新增人员"],
-    ["近7天组织字段填写", fmtPct(in7.length ? newcomers.withCompany / in7.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(in7.length)} 个 owner 填写 company`]
+    ["统计窗口", "上一完整 UTC 周", `${windowLabel}；本区分母为 ${fmtNumber(people.length)} 位新增贡献者`],
+    ["上周新增贡献者", fmtNumber(people.length), "按 owner 历史最早非撤回贡献统计"],
+    ["上周 AI 画像覆盖", fmtPct(people.length ? newcomers.withAi / people.length : 0), aiMetaNote(aiMeta, people.length, newcomers.withAi)],
+    ["上周 GitHub 资料覆盖", fmtPct(people.length ? newcomers.withProfile / people.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(people.length)} 个新增 owner 可用`],
+    ["上周可判定地区人数", fmtPct(people.length ? newcomers.withLocation / people.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(people.length)} 个新增 owner 的公开 location 可归类`],
+    ["上周高置信画像", fmtPct(people.length ? newcomers.highConfidence / people.length : 0), `${fmtNumber(newcomers.highConfidence)} / ${fmtNumber(people.length)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
+    ["上周仅1次发布占比", fmtPct(people.length ? newcomers.singleRelease / people.length : 0), `${fmtNumber(newcomers.singleRelease)} / ${fmtNumber(people.length)} 人目前只有 1 次版本发布`],
+    ["上周新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `上周新增 owner 模块中 ${fmtNumber(topCategory[1])} 个命中` : "上周暂无新增贡献者"],
+    ["上周组织字段填写", fmtPct(people.length ? newcomers.withCompany / people.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(people.length)} 个 owner 填写 company`]
   ];
 
   els.newcomerSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -1135,29 +1154,27 @@ function renderNewcomers() {
   renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
   renderBarList(els.newcomerSourceList, newcomers.sources, 8);
   renderNewcomerInsights(newcomers);
-  renderNewcomerModuleMap(in7);
+  renderNewcomerModuleMap(people);
 
-  els.newcomerRows.innerHTML = in7.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
+  els.newcomerRows.innerHTML = people.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");
 
-  if (!in7.length) {
-    els.newcomerRows.innerHTML = `<div class="loading">近 7 天暂无首次出现的新增 owner。</div>`;
+  if (!people.length) {
+    els.newcomerRows.innerHTML = `<div class="loading">上周暂无首次出现的新增 owner。</div>`;
   }
 }
 
 function renderNewcomerModuleMap(people) {
   if (!els.newcomerModuleMap) return;
   if (els.newcomerMapNote) {
-    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date)).length, 0);
-    els.newcomerMapNote.textContent = `${fmtNumber(people.length)} 个新增 owner，对应 ${fmtNumber(moduleCount)} 个近 7 天新增模块`;
+    const moduleCount = people.reduce((sum, person) => sum + previousWeekNewUserModules(person).length, 0);
+    els.newcomerMapNote.textContent = `${fmtNumber(people.length)} 个上周新增 owner，对应 ${fmtNumber(moduleCount)} 个上周新增模块`;
   }
   if (!people.length) {
-    els.newcomerModuleMap.innerHTML = `<div class="loading">近 7 天暂无新增 owner。</div>`;
+    els.newcomerModuleMap.innerHTML = `<div class="loading">上周暂无新增 owner。</div>`;
     return;
   }
   els.newcomerModuleMap.innerHTML = people.map((person) => {
-    const recentModules = person.modules
-      .filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date))
-      .sort((a, b) => dayKey(moduleFirstPublishedAt(b)).localeCompare(dayKey(moduleFirstPublishedAt(a))) || String(a.name).localeCompare(String(b.name)));
+    const recentModules = previousWeekNewUserModules(person);
     const moduleHtml = recentModules.map((module) => {
       const repoUrl = safeWebUrl(module.repository);
       const repo = repoUrl ? externalLink(repoUrl, "repo") : module.repository ? `<span class="tag warn">repo 非链接</span>` : `<span class="tag risk">repo 未填</span>`;
@@ -1167,7 +1184,7 @@ function renderNewcomerModuleMap(people) {
       <div class="owner-module-card">
         <div>
           <strong>${externalLink(person.profile?.html_url, person.owner)}</strong>
-          <p class="subtle">${escapeHtml(person.source.label)} · ${escapeHtml(person.source.evidence)}</p>
+          <p class="subtle">${escapeHtml(person.source.label)} · 基于公开资料与上周贡献记录</p>
         </div>
         <div class="pill-row">
           <span class="tag">${escapeHtml(person.location)}</span>
@@ -1189,12 +1206,14 @@ function renderDataReconciliation() {
   const quality = s.data_quality || {};
   const integrity = s.source_integrity || {};
   const recentWindow = s.publication_windows?.recent7 || {};
+  const previousWeek = a.newcomers.window;
   const registrationWindow = s.registration_window || {};
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
-  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), s.date)).length, 0);
+  const newcomerModuleCount = a.newcomers.previousWeek.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcRange(moduleFirstPublishedAt(module), previousWeek)).length, 0);
   const cards = [
     ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
-    ["近7天 UTC 窗口", recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to}` : "未记录", "首尾日期均包含，共 7 个 UTC 自然日；第 8 个日期不计入。"],
+    ["滚动7天活跃窗口", recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to}` : "未记录", "仅用于活跃 owner、活跃模块等滚动指标，不用于新增贡献者口径。"],
+    ["上周 UTC 贡献窗口", previousWeek.from && previousWeek.to ? `${previousWeek.from} 至 ${previousWeek.to}` : "未记录", "上一完整 UTC 自然周；新增贡献者和画像均使用此窗口。"],
     ["上周 UTC 注册窗口", registrationWindow.from && registrationWindow.to ? `${registrationWindow.from} 至 ${registrationWindow.to}` : "未记录", `上一完整 UTC 自然周注册 ${fmtNumber(registrationWindow.enabled_registered_count ?? 0)} 人，其中已贡献 ${fmtNumber(registrationWindow.contributed_count ?? 0)} 人。`],
     ["上周注册未贡献", fmtNumber(registrationWindow.no_contribution_count ?? 0), "没有任何非撤回模块或版本记录；只进入待转化列表，不计入贡献者人数。"],
     ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `导出站点当前拼出 ${fmtNumber(derived.module_array_count || a.modules.length)} 条最新模块；必须等于 statistics.total_modules。`],
@@ -1204,9 +1223,9 @@ function renderDataReconciliation() {
     ["贡献者 owner", fmtNumber(derived.owner_count || a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
     ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count ?? active7.length), "近 7 天内有过非撤回版本发布的 owner，不要求是第一次出现。"],
     ["近7天活跃模块", fmtNumber(derived.recent7_active_module_count ?? 0), `对应 ${fmtNumber(derived.recent7_version_release_count ?? 0)} 次版本发布。`],
-    ["近7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "模块首次发布时间落在近 7 个 UTC 自然日内。"],
-    ["近7天新增 owner", fmtNumber(derived.recent7_new_owner_count ?? a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
-    ["新增 owner 对应模块", fmtNumber(derived.recent7_new_owner_module_count ?? newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
+    ["滚动7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "模块首次发布时间落在滚动 7 个 UTC 自然日内。"],
+    ["上周新增 owner", fmtNumber(a.newcomers.previousWeek.length), "owner 的历史最早非撤回贡献日期落在上一完整 UTC 自然周。"],
+    ["上周新增 owner 对应模块", fmtNumber(newcomerModuleCount), "上周新增 owner 在同一自然周内首次发布的模块数。"]
   ];
   const checkHtml = (quality.checks || []).map((check) => `
     <div class="quality-check ${check.passed ? "passed" : check.severity}">
@@ -1353,8 +1372,10 @@ function renderProfileSummary(person) {
 function renderContributorCard(person, options = {}) {
   const isNewcomer = options.mode === "newcomer";
   const category = person.topCategories.map(([name, value]) => `${name} ${value}`).join(" / ") || "通用";
-  const tags = person.signals.length ? person.signals : ["正常"];
-  const modules = person.modules
+  const visibleSignals = isNewcomer ? person.signals.filter((signal) => signal !== "近7天活跃") : person.signals;
+  const tags = visibleSignals.length ? visibleSignals : ["正常"];
+  const scopedModules = isNewcomer ? previousWeekNewUserModules(person) : person.modules;
+  const modules = scopedModules
     .slice()
     .sort((a, b) => dayKey(moduleLastPublishedAt(b)).localeCompare(dayKey(moduleLastPublishedAt(a))))
     .slice(0, isNewcomer ? 5 : 6)
@@ -1432,8 +1453,8 @@ function renderContributorCard(person, options = {}) {
       </div>
 
       <div class="person-stats">
-        <div><strong>${fmtNumber(person.count)}</strong><span>模块</span></div>
-        <div><strong>${fmtNumber(person.recent7)}</strong><span>近7天活跃模块</span></div>
+        <div><strong>${fmtNumber(scopedModules.length)}</strong><span>上周首发模块</span></div>
+        <div><strong>${fmtNumber(person.versionCount)}</strong><span>累计版本</span></div>
         <div><strong>${person.last} UTC</strong><span>最近发布</span></div>
       </div>
 
