@@ -21,6 +21,9 @@ const els = {
   newcomerLocationList: document.querySelector("#newcomerLocationList"),
   newcomerIdentityList: document.querySelector("#newcomerIdentityList"),
   newcomerSourceList: document.querySelector("#newcomerSourceList"),
+  newcomerInsightList: document.querySelector("#newcomerInsightList"),
+  newcomerFocusNote: document.querySelector("#newcomerFocusNote"),
+  newcomerFocusList: document.querySelector("#newcomerFocusList"),
   newcomerMapNote: document.querySelector("#newcomerMapNote"),
   newcomerModuleMap: document.querySelector("#newcomerModuleMap"),
   dataReconcileList: document.querySelector("#dataReconcileList"),
@@ -875,6 +878,143 @@ function aiMetaNote(aiMeta, total) {
   return `${aiMeta?.reason || "AI 未运行"}，当前使用规则画像`;
 }
 
+function renderNewcomerInsights(newcomers) {
+  if (!els.newcomerInsightList || !els.newcomerFocusList) return;
+  const people = newcomers.in7;
+  const total = people.length;
+  if (!total) {
+    els.newcomerInsightList.innerHTML = `<div class="loading">近 7 天暂无新用户，暂时无法形成群体结论。</div>`;
+    els.newcomerFocusList.innerHTML = `<div class="loading">暂无重点观察对象。</div>`;
+    if (els.newcomerFocusNote) els.newcomerFocusNote.textContent = "";
+    return;
+  }
+
+  const recentModules = people.flatMap((person) => recentNewUserModules(person));
+  const topCategory = topEntries(newcomers.categories, 1)[0];
+  const singleShare = newcomers.singleModule / total;
+  const multiModule = total - newcomers.singleModule;
+  const priorities = people.reduce((counts, person) => {
+    const priority = person.portrait?.priority || "P2";
+    counts[priority] = (counts[priority] || 0) + 1;
+    return counts;
+  }, { P0: 0, P1: 0, P2: 0 });
+  const focusCount = priorities.P0 + priorities.P1;
+  const profileShare = newcomers.withProfile / total;
+  const locationShare = newcomers.withLocation / total;
+  const categoryShare = topCategory && recentModules.length ? topCategory[1] / recentModules.length : 0;
+
+  const depthTitle = singleShare >= 0.6
+    ? "新用户以一次性试水为主"
+    : singleShare >= 0.4
+      ? "新增活跃，但复投仍需观察"
+      : "新用户已出现较强复投迹象";
+  const depthTone = singleShare >= 0.6 ? "risk" : singleShare >= 0.4 ? "warn" : "good";
+  const focusTitle = focusCount
+    ? `${fmtNumber(focusCount)} 位值得优先观察`
+    : "暂未出现高优先级信号";
+  const profileTitle = profileShare >= 0.75
+    ? "公开资料覆盖较好"
+    : profileShare >= 0.5
+      ? "公开资料仍有明显缺口"
+      : "画像证据覆盖不足";
+
+  const insights = [
+    {
+      label: "贡献深度",
+      value: fmtPct(singleShare),
+      title: depthTitle,
+      body: `${fmtNumber(newcomers.singleModule)} / ${fmtNumber(total)} 人目前只发布 1 个模块，${fmtNumber(multiModule)} 人已有复投。`,
+      action: "优先跟进已复投用户，并在首次发布后 3 至 7 天观察第二次贡献。",
+      tone: depthTone
+    },
+    {
+      label: "技术方向",
+      value: topCategory ? topCategory[0] : "暂无",
+      title: topCategory ? `主方向占新增模块 ${fmtPct(categoryShare)}` : "暂无可归类方向",
+      body: topCategory
+        ? `${fmtNumber(topCategory[1])} / ${fmtNumber(recentModules.length)} 个近 7 天新增模块归入该方向。`
+        : "当前窗口没有足够模块形成方向结论。",
+      action: topCategory ? `可围绕“${topCategory[0]}”组织案例征集或专题交流。` : "继续积累样本后再判断。",
+      tone: "info"
+    },
+    {
+      label: "运营优先级",
+      value: `${fmtNumber(priorities.P0)} P0 · ${fmtNumber(priorities.P1)} P1`,
+      title: focusTitle,
+      body: `${fmtNumber(priorities.P2)} 位仍处于低证据或单次贡献观察阶段。`,
+      action: focusCount ? "先核对代表模块，再做轻触达、案例共创或社区专题邀约。" : "暂不做强身份判断，先观察模块质量与后续复投。",
+      tone: focusCount ? "good" : "warn"
+    },
+    {
+      label: "证据完整度",
+      value: fmtPct(profileShare),
+      title: profileTitle,
+      body: `GitHub 资料覆盖 ${fmtNumber(newcomers.withProfile)} / ${fmtNumber(total)}，可判定地区 ${fmtNumber(newcomers.withLocation)} / ${fmtNumber(total)}（${fmtPct(locationShare)}）。`,
+      action: "资料不足时只描述贡献行为，不推断国籍、年龄、性别或其他敏感属性。",
+      tone: profileShare >= 0.75 ? "good" : profileShare >= 0.5 ? "warn" : "risk"
+    }
+  ];
+
+  els.newcomerInsightList.innerHTML = insights.map((insight) => `
+    <article class="newcomer-insight-card tone-${insight.tone}">
+      <div class="newcomer-insight-top">
+        <span>${insight.label}</span>
+        <strong>${insight.value}</strong>
+      </div>
+      <h4>${insight.title}</h4>
+      <p>${insight.body}</p>
+      <p class="newcomer-insight-action">建议：${insight.action}</p>
+    </article>
+  `).join("");
+
+  const priorityOrder = { P0: 0, P1: 1, P2: 2 };
+  const ranked = people.slice().sort((left, right) => {
+    const priorityDelta = priorityOrder[left.portrait?.priority || "P2"] - priorityOrder[right.portrait?.priority || "P2"];
+    if (priorityDelta) return priorityDelta;
+    if (right.recent7 !== left.recent7) return right.recent7 - left.recent7;
+    if ((right.portrait?.confidence || 0) !== (left.portrait?.confidence || 0)) {
+      return (right.portrait?.confidence || 0) - (left.portrait?.confidence || 0);
+    }
+    return left.owner.localeCompare(right.owner);
+  });
+  const focusPeople = ranked.filter((person) => ["P0", "P1"].includes(person.portrait?.priority || "P2"));
+  const visiblePeople = (focusPeople.length ? focusPeople : ranked).slice(0, 6);
+
+  if (els.newcomerFocusNote) {
+    els.newcomerFocusNote.textContent = focusPeople.length
+      ? `显示 ${fmtNumber(visiblePeople.length)} / ${fmtNumber(focusPeople.length)} 位 P0/P1 新用户`
+      : "暂无 P0/P1，按贡献量与公开证据展示当前前 6 位";
+  }
+
+  els.newcomerFocusList.innerHTML = visiblePeople.map((person) => {
+    const priority = person.portrait?.priority || "P2";
+    const modules = recentNewUserModules(person);
+    const downloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
+    const owner = person.profile?.html_url
+      ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>`
+      : person.owner;
+    return `
+      <article class="newcomer-focus-card">
+        <div class="newcomer-focus-head">
+          <strong>${owner}</strong>
+          <span class="tag ${priority === "P0" ? "hot" : priority === "P1" ? "warn" : ""}">${priority}</span>
+        </div>
+        <div class="pill-row">
+          <span class="tag">${person.topCategories[0]?.[0] || "通用/实验"}</span>
+          <span class="tag">${person.identity}</span>
+        </div>
+        <p>${person.portrait?.priorityReason || "先观察模块质量与后续复投"}</p>
+        <div class="newcomer-focus-metrics">
+          <span><strong>${fmtNumber(modules.length)}</strong> 近7天模块</span>
+          <span><strong>${fmtNumber(downloads)}</strong> 当前下载</span>
+          <span><strong>${fmtPct(person.portrait?.repoRatio || 0, 0)}</strong> repo</span>
+        </div>
+        <p class="newcomer-insight-action">${newcomerActionFor(person)}</p>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderNewcomers() {
   const newcomers = state.analysis.newcomers;
   const in7 = newcomers.in7;
@@ -904,6 +1044,7 @@ function renderNewcomers() {
   renderBarList(els.newcomerLocationList, newcomers.locations, 8);
   renderBarList(els.newcomerIdentityList, newcomers.identities, 8);
   renderBarList(els.newcomerSourceList, newcomers.sources, 8);
+  renderNewcomerInsights(newcomers);
   renderNewcomerModuleMap(in7);
 
   els.newcomerRows.innerHTML = in7.slice(0, 40).map((person) => renderContributorCard(person, { mode: "newcomer" })).join("");

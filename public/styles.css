@@ -746,6 +746,120 @@ tr:last-child td {
   gap: 10px;
 }
 
+.newcomer-insights,
+.newcomer-focus {
+  border: 1px solid #e5eaee;
+  border-radius: 10px;
+  background: #fbfcfd;
+  padding: 14px;
+}
+
+.newcomer-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.newcomer-insight-card {
+  min-width: 0;
+  border: 1px solid #e2e8ec;
+  border-top: 3px solid var(--blue);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.newcomer-insight-card.tone-good {
+  border-top-color: var(--green);
+}
+
+.newcomer-insight-card.tone-warn {
+  border-top-color: var(--yellow);
+}
+
+.newcomer-insight-card.tone-risk {
+  border-top-color: var(--red);
+}
+
+.newcomer-insight-top,
+.newcomer-focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.newcomer-insight-top span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.newcomer-insight-top strong {
+  font-size: 16px;
+}
+
+.newcomer-insight-card h4 {
+  margin: 12px 0 6px;
+  font-size: 15px;
+}
+
+.newcomer-insight-card p,
+.newcomer-focus-card p {
+  margin: 0;
+  color: #40505d;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.newcomer-insight-action {
+  margin-top: 9px !important;
+  color: var(--accent-strong) !important;
+  font-weight: 700;
+}
+
+.newcomer-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.newcomer-focus-card {
+  min-width: 0;
+  border: 1px solid #e2e8ec;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.newcomer-focus-card > .pill-row {
+  margin: 9px 0;
+}
+
+.newcomer-focus-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.newcomer-focus-metrics span {
+  border-radius: 6px;
+  background: #f3f6f8;
+  padding: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.newcomer-focus-metrics strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
 .newcomer-bars {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -997,6 +1111,8 @@ tr:last-child td {
   }
 
   .newcomer-bars,
+  .newcomer-insight-grid,
+  .newcomer-focus-grid,
   .quality-check-list,
   .reconcile-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1029,6 +1145,8 @@ tr:last-child td {
   .newcomer-summary-grid,
   .new-user-contribution-summary,
   .newcomer-bars,
+  .newcomer-insight-grid,
+  .newcomer-focus-grid,
   .owner-module-list,
   .quality-check-list,
   .reconcile-grid,

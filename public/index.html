@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mooncakes 贡献者每日分析</title>
-    <link rel="stylesheet" href="styles.css?v=20260720-new-users-utc">
+    <link rel="stylesheet" href="styles.css?v=20260720-newcomer-insights">
   </head>
   <body>
     <main class="app-shell">
@@ -48,6 +48,20 @@
           </div>
           <div class="newcomer-layout">
             <div class="newcomer-summary-grid" id="newcomerSummary"></div>
+            <div class="newcomer-insights">
+              <div class="section-title-row">
+                <h3>新用户群体结论</h3>
+                <span class="subtle">仅基于公开 GitHub 字段与 Mooncakes 模块元数据</span>
+              </div>
+              <div class="newcomer-insight-grid" id="newcomerInsightList"></div>
+            </div>
+            <div class="newcomer-focus">
+              <div class="section-title-row">
+                <h3>重点新用户观察</h3>
+                <span class="subtle" id="newcomerFocusNote"></span>
+              </div>
+              <div class="newcomer-focus-grid" id="newcomerFocusList"></div>
+            </div>
             <div class="newcomer-bars">
               <div>
                 <h3>近7天新增 owner 公开地区分布</h3>
@@ -178,6 +192,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260720-new-users-utc" type="module"></script>
+    <script src="app.js?v=20260720-newcomer-insights" type="module"></script>
   </body>
 </html>
