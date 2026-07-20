@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build:data": "node scripts/build-snapshot.mjs public/data/latest.json",
+    "validate:data": "node scripts/validate-snapshot.mjs public/data/latest.json",
     "start": "node server.mjs"
   }
 }

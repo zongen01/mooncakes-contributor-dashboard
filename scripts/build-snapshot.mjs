@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { buildSnapshotFromExports, todayInUtc } from "../lib/mooncakes-exports.mjs";
+import { SNAPSHOT_ALGORITHM_VERSION, buildSnapshotFromExports, todayInUtc } from "../lib/mooncakes-exports.mjs";
 
 const outputFile = process.argv[2] || "public/data/latest.json";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -34,16 +34,19 @@ function truncate(value, max = 280) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function deriveMetrics(modules, statistics, snapshotDate, ownerHistory) {
+function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows) {
   const owners = new Map();
   const recent7Owners = new Set();
   const recent7Modules = [];
   const invalidCreatedAt = [];
+  const invalidModuleFirstSeen = [];
 
   for (const module of modules) {
     const owner = ownerOf(module.name);
     const created = dayKey(module.created_at);
+    const firstPublished = dayKey(module.first_published_at || moduleHistory[module.name]?.first_seen);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(created)) invalidCreatedAt.push(module.name || "(unknown)");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstPublished)) invalidModuleFirstSeen.push(module.name || "(unknown)");
     if (!owners.has(owner)) {
       owners.set(owner, {
         first_seen: created,
@@ -77,28 +80,42 @@ function deriveMetrics(modules, statistics, snapshotDate, ownerHistory) {
   const todayNewOwners = recent7NewOwners.filter((entry) => entry.first_seen === snapshotDate);
   const recent7NewOwnerSet = new Set(recent7NewOwners.map((entry) => entry.owner));
   const recent7NewOwnerModules = recent7Modules.filter((module) => recent7NewOwnerSet.has(ownerOf(module.name)));
+  const recentWindow = publicationWindows.recent7 || {};
+  const previousWindow = publicationWindows.previous7 || {};
 
   return {
-    algorithm_version: "2026-07-20.2-owner-history",
+    algorithm_version: SNAPSHOT_ALGORITHM_VERSION,
     snapshot_date: snapshotDate,
     module_array_count: modules.length,
     statistics_total_modules: Number(statistics?.total_modules || 0),
     statistics_total_packages: Number(statistics?.total_packages || 0),
+    statistics_total_versions: Number(statistics?.total_versions || 0),
     statistics_total_downloads: Number(statistics?.total_downloads || 0),
     owner_count: owners.size,
-    recent7_active_owner_count: recent7Owners.size,
-    recent7_new_owner_count: recent7NewOwners.length,
+    recent7_active_owner_count: Number(recentWindow.active_owner_count ?? recent7Owners.size),
+    recent7_active_module_count: Number(recentWindow.active_module_count ?? recent7Modules.length),
+    recent7_version_release_count: Number(recentWindow.version_release_count ?? 0),
+    recent7_new_module_count: Number(recentWindow.new_module_count ?? 0),
+    recent7_new_owner_count: Number(recentWindow.new_owner_count ?? recent7NewOwners.length),
     today_new_owner_count: todayNewOwners.length,
-    recent7_module_count: recent7Modules.length,
-    recent7_new_owner_module_count: recent7NewOwnerModules.length,
+    recent7_module_count: Number(recentWindow.active_module_count ?? recent7Modules.length),
+    recent7_new_owner_module_count: Number(recentWindow.new_owner_module_count ?? recent7NewOwnerModules.length),
+    previous7_active_owner_count: Number(previousWindow.active_owner_count ?? 0),
+    previous7_active_module_count: Number(previousWindow.active_module_count ?? 0),
+    previous7_version_release_count: Number(previousWindow.version_release_count ?? 0),
+    previous7_new_module_count: Number(previousWindow.new_module_count ?? 0),
+    previous7_new_owner_count: Number(previousWindow.new_owner_count ?? 0),
+    recent7_latest_module_count: recent7Modules.length,
     owner_history_count: Object.keys(ownerHistory).length,
+    module_history_count: Object.keys(moduleHistory).length,
     invalid_owner_first_seen_count: invalidOwnerFirstSeen.length,
+    invalid_module_first_seen_count: invalidModuleFirstSeen.length,
     invalid_created_at_count: invalidCreatedAt.length,
     invalid_created_at_examples: invalidCreatedAt.slice(0, 10)
   };
 }
 
-function buildDataQuality({ modules, statistics, owners, ownerHistory, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHistory, publicationWindows, sourceIntegrity, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
   const checks = [
     {
       id: "modules_count_matches_statistics",
@@ -107,6 +124,14 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, githubPro
       expected: Number(statistics?.total_modules || 0),
       actual: modules.length,
       passed: modules.length === Number(statistics?.total_modules || 0)
+    },
+    {
+      id: "versions_count_matches_exports",
+      label: "有效版本数等于源站非撤回版本记录数",
+      severity: "error",
+      expected: Number(sourceIntegrity.non_yanked_version_rows || 0),
+      actual: Number(statistics?.total_versions || 0),
+      passed: Number(statistics?.total_versions || 0) === Number(sourceIntegrity.non_yanked_version_rows || 0)
     },
     {
       id: "owner_count_matches_github_requests",
@@ -125,6 +150,14 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, githubPro
       passed: derivedMetrics.invalid_created_at_count === 0
     },
     {
+      id: "module_history_complete",
+      label: "完整版本历史覆盖全部模块",
+      severity: "error",
+      expected: modules.length,
+      actual: Object.keys(moduleHistory).length,
+      passed: modules.length === Object.keys(moduleHistory).length
+    },
+    {
       id: "owner_history_complete",
       label: "完整版本历史覆盖全部 owner",
       severity: "error",
@@ -133,12 +166,116 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, githubPro
       passed: owners.length === Object.keys(ownerHistory).length
     },
     {
+      id: "module_first_seen_parseable",
+      label: "模块首次发布时间可解析为 UTC 日期",
+      severity: "error",
+      expected: 0,
+      actual: derivedMetrics.invalid_module_first_seen_count,
+      passed: derivedMetrics.invalid_module_first_seen_count === 0
+    },
+    {
       id: "owner_first_seen_parseable",
       label: "owner 首次贡献时间可解析为 UTC 日期",
       severity: "error",
       expected: 0,
       actual: derivedMetrics.invalid_owner_first_seen_count,
       passed: derivedMetrics.invalid_owner_first_seen_count === 0
+    },
+    {
+      id: "recent_activity_matches_latest_modules",
+      label: "近 7 天活跃模块数与完整发布历史一致",
+      severity: "error",
+      expected: Number(publicationWindows.recent7?.active_module_count ?? 0),
+      actual: derivedMetrics.recent7_latest_module_count,
+      passed: derivedMetrics.recent7_latest_module_count === Number(publicationWindows.recent7?.active_module_count ?? 0)
+    },
+    {
+      id: "package_ids_unique",
+      label: "源站 package_id 无重复",
+      severity: "error",
+      expected: 0,
+      actual: sourceIntegrity.duplicate_package_id_count,
+      passed: sourceIntegrity.duplicate_package_id_count === 0
+    },
+    {
+      id: "users_unique",
+      label: "users.csv 的 user_id 和 username 无重复",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.duplicate_user_id_count ?? 0) + Number(sourceIntegrity.duplicate_username_count ?? 0),
+      passed: Number(sourceIntegrity.duplicate_user_id_count ?? 0) + Number(sourceIntegrity.duplicate_username_count ?? 0) === 0
+    },
+    {
+      id: "package_user_mapping_valid",
+      label: "版本记录的 user_id 与 username 映射一致",
+      severity: "error",
+      expected: 0,
+      actual: sourceIntegrity.package_user_mapping_mismatch_count,
+      passed: sourceIntegrity.package_user_mapping_mismatch_count === 0
+    },
+    {
+      id: "module_identifiers_valid",
+      label: "模块名包含唯一且大小写一致的 owner 段",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.malformed_module_name_count ?? 0) + Number(sourceIntegrity.owner_case_collision_count ?? 0),
+      passed: Number(sourceIntegrity.malformed_module_name_count ?? 0) + Number(sourceIntegrity.owner_case_collision_count ?? 0) === 0
+    },
+    {
+      id: "source_dates_valid",
+      label: "源站版本时间均有效且不晚于快照日期",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.invalid_created_at_count || 0) + Number(sourceIntegrity.future_created_at_count || 0),
+      passed: Number(sourceIntegrity.invalid_created_at_count || 0) + Number(sourceIntegrity.future_created_at_count || 0) === 0
+    },
+    {
+      id: "module_owner_matches_username",
+      label: "模块 owner 段与源站 username 一致",
+      severity: "error",
+      expected: 0,
+      actual: sourceIntegrity.owner_username_mismatch_count,
+      passed: sourceIntegrity.owner_username_mismatch_count === 0
+    },
+    {
+      id: "downloads_cover_modules",
+      label: "下载量表与有效模块一一对应",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0) + Number(sourceIntegrity.orphan_download_module_count || 0),
+      passed: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0) + Number(sourceIntegrity.orphan_download_module_count || 0) === 0
+    },
+    {
+      id: "download_values_valid",
+      label: "下载量和更新时间字段均有效",
+      severity: "error",
+      expected: 0,
+      actual: Number(sourceIntegrity.invalid_download_value_count ?? 0) + Number(sourceIntegrity.invalid_download_updated_at_count ?? 0),
+      passed: Number(sourceIntegrity.invalid_download_value_count ?? 0) + Number(sourceIntegrity.invalid_download_updated_at_count ?? 0) === 0
+    },
+    {
+      id: "current_size_fields_recorded",
+      label: "当前模块缺失的 line_count/package_count 已记录",
+      severity: "info",
+      expected: "recorded",
+      actual: `${Number(sourceIntegrity.latest_module_missing_line_count ?? 0)} line / ${Number(sourceIntegrity.latest_module_missing_package_count ?? 0)} package`,
+      passed: true
+    },
+    {
+      id: "owners_have_user_rows",
+      label: "全部贡献 owner 均可映射到 users.csv",
+      severity: "warning",
+      expected: 0,
+      actual: sourceIntegrity.owner_without_user_row_count,
+      passed: sourceIntegrity.owner_without_user_row_count === 0
+    },
+    {
+      id: "canonical_publication_time_recorded",
+      label: "版本时间以 packages.csv 顶层 created_at 为准，元数据差异已记录",
+      severity: "info",
+      expected: "recorded",
+      actual: sourceIntegrity.meta_created_at_mismatch_count,
+      passed: true
     },
     {
       id: "github_api_no_failures",
@@ -427,7 +564,10 @@ async function main() {
   const modules = exportSnapshot.modules || [];
   const statistics = exportSnapshot.statistics || {};
   const githubProfiles = exportSnapshot.github_profiles || {};
+  const moduleHistory = exportSnapshot.module_history || {};
   const ownerHistory = exportSnapshot.owner_history || {};
+  const publicationWindows = exportSnapshot.publication_windows || {};
+  const sourceIntegrity = exportSnapshot.source_integrity || {};
 
   const ownerCounts = new Map();
   for (const module of modules) {
@@ -441,12 +581,15 @@ async function main() {
   const failed = 0;
   const notFound = Object.values(githubProfiles).filter((profile) => profile?.exists === false).length;
   const ai = await buildAiPortraits(modules, githubProfiles, snapshotDate, ownerHistory);
-  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate, ownerHistory);
+  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHistory, publicationWindows);
   const dataQuality = buildDataQuality({
     modules,
     statistics,
     owners,
     ownerHistory,
+    moduleHistory,
+    publicationWindows,
+    sourceIntegrity,
     githubProfiles,
     githubFailed: failed,
     githubNotFound: notFound,
@@ -467,7 +610,10 @@ async function main() {
       ai_portraits: OPENAI_API_KEY ? "https://api.openai.com/v1/responses" : null
     },
     modules,
+    module_history: moduleHistory,
     owner_history: ownerHistory,
+    publication_windows: publicationWindows,
+    source_integrity: sourceIntegrity,
     statistics,
     derived_metrics: derivedMetrics,
     data_quality: dataQuality,

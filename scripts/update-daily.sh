@@ -24,8 +24,9 @@ git -C "$repo_dir" worktree add --detach "$worktree_dir" origin/main
 
 cd "$worktree_dir"
 npm run build:data
+npm run validate:data
 
-node -e "const s=require('./public/data/latest.json'); if(s.data_quality?.status!=='pass') throw new Error('Data quality check failed'); if(s.source?.exports_base_url!==process.env.MOONCAKES_EXPORTS_BASE_URL) throw new Error('Unexpected exports source'); console.log('Validated',s.date,s.modules.length,'modules');"
+node -e "const s=require('./public/data/latest.json'); if(s.source?.exports_base_url!==process.env.MOONCAKES_EXPORTS_BASE_URL) throw new Error('Unexpected exports source');"
 
 if git diff --quiet -- public/data/latest.json; then
   echo "No data changes to publish"

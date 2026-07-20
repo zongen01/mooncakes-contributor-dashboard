@@ -49,6 +49,15 @@ function fmtPct(value, digits = 1) {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function dayKey(dateLike) {
   const parsed = new Date(dateLike);
   return Number.isNaN(parsed.getTime()) ? String(dateLike || "").slice(0, 10) : parsed.toISOString().slice(0, 10);
@@ -77,9 +86,23 @@ function moduleShort(moduleName) {
   return String(moduleName || "").split("/").slice(1).join("/") || moduleName;
 }
 
+function moduleFirstPublishedAt(module) {
+  return module?.first_published_at || module?.created_at || "";
+}
+
+function moduleLastPublishedAt(module) {
+  return module?.last_published_at || module?.created_at || "";
+}
+
 function safeWebUrl(url) {
   const text = String(url || "").trim();
   return /^https?:\/\//i.test(text) ? text : "";
+}
+
+function externalLink(url, label) {
+  const safeUrl = safeWebUrl(url);
+  const safeLabel = escapeHtml(label);
+  return safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noreferrer">${safeLabel}</a>` : safeLabel;
 }
 
 function topEntries(obj, limit = 8) {
@@ -174,7 +197,7 @@ function inferIdentity(profile, person) {
 }
 
 function inferSource(person, profile, snapshotDate) {
-  const recentModules = person.modules.filter((module) => isWithinUtcWindow(module.created_at, snapshotDate));
+  const recentModules = person.modules.filter((module) => isWithinUtcWindow(moduleLastPublishedAt(module), snapshotDate));
   const repositories = recentModules.map((module) => String(module.repository || "")).filter(Boolean);
   const company = cleanCompany(profile?.company);
   const profileText = `${profile?.type || ""} ${profile?.name || ""} ${company} ${profile?.bio || ""}`.toLowerCase();
@@ -183,7 +206,7 @@ function inferSource(person, profile, snapshotDate) {
     return { label: "GitHub 组织账号", evidence: "GitHub type=Organization" };
   }
   if (repositories.some((repo) => /github\.com\/moonbit-community|github\.com\/moonbitlang/i.test(repo))) {
-    return { label: "MoonBit 社区仓库", evidence: "新增模块 repository 指向 moonbit-community/moonbitlang" };
+    return { label: "MoonBit 社区仓库", evidence: "近期活跃模块 repository 指向 moonbit-community/moonbitlang" };
   }
   if (/(university|college|institute|school|lab|research|academy|大学|学院|研究|实验室)/.test(profileText)) {
     return { label: "高校/研究机构公开资料", evidence: "GitHub company/bio/name 含高校或研究机构线索" };
@@ -195,13 +218,13 @@ function inferSource(person, profile, snapshotDate) {
     const githubRepos = repositories.filter((repo) => /github\.com/i.test(repo)).length;
     return {
       label: githubRepos ? "个人 GitHub 仓库" : "外部仓库链接",
-      evidence: `近 7 天新增模块 ${repositories.length} 个填写 repository`
+      evidence: `近 7 天活跃模块 ${repositories.length} 个填写 repository`
     };
   }
   if (profile?.location || profile?.bio) {
     return { label: "GitHub 公开资料", evidence: "公开 location/bio 可作为来源线索" };
   }
-  return { label: "来源线索不足", evidence: "GitHub 公开资料少，新增模块 repository 也不足" };
+  return { label: "来源线索不足", evidence: "GitHub 公开资料少，近期活跃模块 repository 也不足" };
 }
 
 function newcomerActionFor(person) {
@@ -261,10 +284,10 @@ function buildContributorPortrait(person, snapshotDate) {
   else if (publicRepos >= 50) influenceLabel = "仓库活跃但粉丝较少";
 
   let paceLabel = "试水型贡献者";
-  if (person.count >= 20) paceLabel = "核心高产贡献者";
-  else if (person.count >= 5 && activeSpanDays >= 90) paceLabel = "持续贡献型";
-  else if (person.count >= 3 && person.recent7 / person.count >= 0.7) paceLabel = "近期集中爆发型";
-  else if (person.count >= 2) paceLabel = "轻量复投型";
+  if (person.count >= 20 || person.versionCount >= 30) paceLabel = "核心高产贡献者";
+  else if (person.versionCount >= 5 && activeSpanDays >= 90) paceLabel = "持续发布型";
+  else if (person.recentReleaseCount >= 3 && person.recentReleaseCount / Math.max(person.versionCount, 1) >= 0.7) paceLabel = "近期集中发布型";
+  else if (person.versionCount >= 2) paceLabel = "已有再次发布";
 
   let transparencyLabel = "仓库透明度偏低";
   if (repoRatio >= 0.9) transparencyLabel = "仓库透明度高";
@@ -275,7 +298,7 @@ function buildContributorPortrait(person, snapshotDate) {
   else if (profileScore >= 0.35) profileLabel = "公开资料中等";
 
   let priority = aiPortrait?.priority || "P2";
-  let priorityReason = "先观察模块质量、公开资料和后续复投";
+  let priorityReason = "先观察模块质量、公开资料和后续发布";
   if (
     person.count >= 5 ||
     (usableProfile && followers >= 200) ||
@@ -283,7 +306,7 @@ function buildContributorPortrait(person, snapshotDate) {
     (person.identityConfidence >= 0.68 && ["语言/工具链开发者", "AI/LLM 开发者", "高校/研究机构线索"].includes(person.identity))
   ) {
     priority = "P1";
-    priorityReason = "有较明确公开线索或复投迹象";
+    priorityReason = "有较明确公开线索或持续发布迹象";
   }
   if (person.count >= 10 || (usableProfile && followers >= 1000) || (person.recent7 >= 5 && repoRatio >= 0.8)) {
     priority = "P0";
@@ -329,6 +352,7 @@ function analyze(snapshot) {
   const modules = snapshot.modules || [];
   const stats = snapshot.statistics || {};
   const githubProfiles = snapshot.github_profiles || {};
+  const moduleHistory = snapshot.module_history || {};
   const ownerHistory = snapshot.owner_history || {};
   const aiPortraits = snapshot.ai_portraits || {};
   const aiMeta = snapshot.ai_meta || { enabled: false };
@@ -352,7 +376,8 @@ function analyze(snapshot) {
 
   for (const module of modules) {
     const owner = ownerOf(module.name);
-    const created = dayKey(module.created_at);
+    const created = dayKey(moduleLastPublishedAt(module));
+    const firstPublished = dayKey(moduleFirstPublishedAt(module));
     if (!owners.has(owner)) {
       owners.set(owner, {
         owner,
@@ -360,6 +385,8 @@ function analyze(snapshot) {
         first: "",
         last: "",
         recent7: 0,
+        recentReleaseCount: 0,
+        versionCount: 0,
         modules: [],
         keywords: {},
         categories: {},
@@ -371,6 +398,14 @@ function analyze(snapshot) {
     const person = owners.get(owner);
     person.count += 1;
     person.modules.push(module);
+    const history = moduleHistory[module.name] || {};
+    const releaseDays = Object.entries(history.release_days || {});
+    const moduleVersionCount = Number(history.version_count ?? module.version_count ?? 1);
+    const moduleRecentReleaseCount = releaseDays.length
+      ? releaseDays.reduce((sum, [date, count]) => sum + (isWithinUtcWindow(date, snapshot.date) ? Number(count || 0) : 0), 0)
+      : (isWithinUtcWindow(moduleLastPublishedAt(module), snapshot.date) ? 1 : 0);
+    person.versionCount += moduleVersionCount;
+    person.recentReleaseCount += moduleRecentReleaseCount;
     person.first = !person.first || created < person.first ? created : person.first;
     person.last = !person.last || created > person.last ? created : person.last;
 
@@ -398,10 +433,10 @@ function analyze(snapshot) {
       else if (module.repository.includes("github.com")) repoGithub += 1;
     }
 
-    if (!daily.has(created)) {
-      daily.set(created, { date: created, count: 0, owners: new Set(), modules: [] });
+    if (!daily.has(firstPublished)) {
+      daily.set(firstPublished, { date: firstPublished, count: 0, owners: new Set(), modules: [] });
     }
-    const day = daily.get(created);
+    const day = daily.get(firstPublished);
     day.count += 1;
     day.owners.add(owner);
     day.modules.push(module.name);
@@ -417,6 +452,7 @@ function analyze(snapshot) {
       person.last = dayKey(history.last_seen);
       person.lastSeenAt = history.last_seen;
     }
+    person.versionCount = Number(history.version_count ?? person.versionCount);
     const topCategories = topEntries(person.categories, 3);
     const topKeywords = topEntries(person.keywords, 5);
     const rawProfile = githubProfiles[person.owner] || null;
@@ -431,7 +467,8 @@ function analyze(snapshot) {
     const signals = [];
     if (person.count >= 20) signals.push("核心高产");
     if (person.recent7 >= 3) signals.push("近7天活跃");
-    if (person.count === 1) signals.push("一次性贡献");
+    if (person.count === 1) signals.push("单模块");
+    if (person.versionCount === 1) signals.push("仅1次发布");
     if (person.repoMissing / person.count >= 0.5) signals.push("仓库缺失偏高");
     if (daysBetween(person.last, snapshot.date) >= 180) signals.push("可能沉寂");
     if (!profile) signals.push("GitHub 未覆盖");
@@ -508,7 +545,7 @@ function analyze(snapshot) {
   });
   const recent7Count = recent7.reduce((sum, day) => sum + day.count, 0);
   const previous7Count = previous7.reduce((sum, day) => sum + day.count, 0);
-  const active7Owners = new Set(modules.filter((module) => isWithinUtcWindow(module.created_at, snapshot.date)).map((module) => ownerOf(module.name))).size;
+  const active7Owners = Number(snapshot.publication_windows?.recent7?.active_owner_count ?? new Set(modules.filter((module) => isWithinUtcWindow(moduleLastPublishedAt(module), snapshot.date)).map((module) => ownerOf(module.name))).size);
   const singleOwners = contributors.filter((person) => person.count === 1).length;
   const top10Count = contributors.slice(0, 10).reduce((sum, person) => sum + person.count, 0);
   const top20Count = contributors.slice(0, 20).reduce((sum, person) => sum + person.count, 0);
@@ -569,6 +606,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
   let withAi = 0;
   let highConfidenceAi = 0;
   let singleModule = 0;
+  let singleRelease = 0;
 
   for (const person of in7) {
     if (person.profile) withProfile += 1;
@@ -581,6 +619,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     if ((person.portrait?.confidence || 0) >= 0.66) highConfidence += 1;
     if ((person.aiPortrait?.confidence || 0) >= 0.66) highConfidenceAi += 1;
     if (person.count === 1) singleModule += 1;
+    if (person.versionCount === 1) singleRelease += 1;
     for (const [category, count] of person.topCategories) {
       categories[category] = (categories[category] || 0) + count;
     }
@@ -599,23 +638,26 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
     highConfidence,
     withAi,
     highConfidenceAi,
-    singleModule
+    singleModule,
+    singleRelease
   };
 }
 
 function buildIssues(context) {
-  const recentModules = context.modules.filter((module) => isWithinUtcWindow(module.created_at, context.snapshot.date));
+  const recentModules = context.modules.filter((module) => isWithinUtcWindow(moduleLastPublishedAt(module), context.snapshot.date));
   const recentContributors = context.contributors.filter((person) => person.recent7 > 0);
   const total = recentModules.length || 1;
-  const ownerTotal = recentContributors.length || 1;
+  const activeOwnerTotal = recentContributors.length || 1;
+  const newcomerContributors = recentContributors.filter((person) => isWithinUtcWindow(person.first, context.snapshot.date));
+  const newcomerOwnerTotal = newcomerContributors.length || 1;
   const issues = [];
   const top10Share = recentContributors
     .slice()
     .sort((left, right) => right.recent7 - left.recent7 || right.count - left.count)
     .slice(0, 10)
     .reduce((sum, person) => sum + person.recent7, 0) / total;
-  const singleOwners = recentContributors.filter((person) => person.count === 1).length;
-  const singleShare = singleOwners / ownerTotal;
+  const singleOwners = newcomerContributors.filter((person) => person.count === 1).length;
+  const singleShare = singleOwners / newcomerOwnerTotal;
   const missingRepoCount = recentModules.filter((module) => !module.repository).length;
   const missingRepoShare = missingRepoCount / total;
   const delta7 = context.previous7Count ? (context.recent7Count - context.previous7Count) / context.previous7Count : 0;
@@ -625,47 +667,47 @@ function buildIssues(context) {
     recentCategories[category] = (recentCategories[category] || 0) + 1;
   }
   const aiShare = (recentCategories["AI/LLM"] || 0) / total;
-  const githubCoverage = recentContributors.filter((person) => person.profile).length / ownerTotal;
+  const githubCoverage = recentContributors.filter((person) => person.profile).length / activeOwnerTotal;
 
   if (top10Share >= 0.4) {
     issues.push({
       severity: "high",
       title: `近 7 天头部集中度偏高：Top 10 贡献 ${fmtPct(top10Share)}`,
-      body: "短期增长高度依赖少数高产 owner。适合重点维护头部关系，同时追踪是否能带动更多复投。"
+      body: "近期模块活跃高度依赖少数高产 owner。适合重点维护头部关系，同时追踪是否能带动更多贡献者持续发布。"
     });
   }
   if (singleShare >= 0.5) {
     issues.push({
       severity: "medium",
-      title: `近 7 天首发留存压力：${singleOwners} 个活跃 owner 目前只发 1 个模块`,
-      body: "短期新增里首发占比较高。可以补发布模板、包质量反馈、每周推荐来推动复投。"
+      title: `近 7 天新增 owner 单模块占比 ${fmtPct(singleShare)}`,
+      body: `${singleOwners} / ${newcomerContributors.length} 位新增 owner 目前只发布 1 个模块。可以补发布模板、包质量反馈、每周推荐来推动第二次贡献。`
     });
   }
   if (missingRepoShare >= 0.18) {
     issues.push({
       severity: "medium",
-      title: `近 7 天透明度缺口：${fmtNumber(missingRepoCount)} 个新增模块未填写 repository`,
-      body: "缺仓库链接会影响信任、复用和协作。建议把近 7 天新增包的 repository 完整率作为质量指标。"
+      title: `近 7 天透明度缺口：${fmtNumber(missingRepoCount)} 个活跃模块未填写 repository`,
+      body: "缺仓库链接会影响信任、复用和协作。建议把近 7 天活跃模块的 repository 完整率作为质量指标。"
     });
   }
   if (delta7 < -0.25) {
     issues.push({
       severity: "medium",
-      title: `近 7 天新增放缓：环比 ${fmtPct(delta7)}`,
-      body: "短周期新增下降，需要看是否是自然波动，或是否缺少活动、文档、示例带动。"
+      title: `近 7 天新模块首发放缓：环比 ${fmtPct(delta7)}`,
+      body: "短周期首次发布的新模块数量下降，需要看是否是自然波动，或是否缺少活动、文档、示例带动。"
     });
   } else if (delta7 > 0.25) {
     issues.push({
       severity: "low",
-      title: `近 7 天新增提速：环比 +${fmtPct(delta7)}`,
-      body: "近期有明显增长，可以追踪来源 owner 和主题，及时做案例扩散。"
+      title: `近 7 天新模块首发提速：环比 +${fmtPct(delta7)}`,
+      body: "近期首次发布的新模块明显增长，可以追踪来源 owner 和主题，及时做案例扩散。"
     });
   }
   if (aiShare < 0.08) {
     issues.push({
       severity: "low",
-      title: `近 7 天 AI/LLM 相关占比 ${fmtPct(aiShare)}，还不是主赛道`,
-      body: "如果要强调 AI 原生生态，需要更多 agent、SDK、评测、工具调用类包作为短期新增证据。"
+      title: `近 7 天活跃模块中 AI/LLM 占比 ${fmtPct(aiShare)}，还不是主赛道`,
+      body: "如果要强调 AI 原生生态，需要更多 agent、SDK、评测、工具调用类包形成持续发布证据。"
     });
   }
   if (githubCoverage > 0 && githubCoverage < 0.8) {
@@ -696,9 +738,12 @@ function render() {
 function renderSummary() {
   const a = state.analysis;
   const s = state.snapshot;
+  const derived = s.derived_metrics || {};
+  const recentWindow = s.publication_windows?.recent7 || {};
+  const recentWindowLabel = recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to} UTC` : "当前 7 个 UTC 自然日";
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
   const active7Total = active7.length || 1;
-  const recent7ModuleTotal = a.recent7Count || 1;
+  const activeModuleTotal = Number(derived.recent7_active_module_count ?? active7.reduce((sum, person) => sum + person.recent7, 0)) || 1;
   const recent7Top10 = active7
     .slice()
     .sort((left, right) => right.recent7 - left.recent7 || right.count - left.count)
@@ -707,12 +752,12 @@ function renderSummary() {
   const active7Github = active7.filter((person) => person.profile).length;
   const active7Single = active7.filter((person) => person.count === 1).length;
   const metrics = [
-    ["近7天活跃 owner", fmtNumber(active7.length), `近 7 天新增 ${fmtNumber(a.recent7Count)} 个模块`],
-    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), "首次发布模块的 owner"],
-    ["今日新增 owner", fmtNumber(a.newcomers.today.length), `${s.date} UTC 首次出现的 owner`],
+    ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count ?? active7.length), `${fmtNumber(activeModuleTotal)} 个活跃模块 · ${fmtNumber(derived.recent7_version_release_count ?? 0)} 次版本发布`],
+    ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), `${recentWindowLabel} 首次发布模块的 owner`],
+    ["近7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "首次发布时间落在当前 UTC 窗口"],
     ["近7天 GitHub 覆盖", fmtPct(active7Github / active7Total), `${fmtNumber(active7Github)} / ${fmtNumber(active7.length)} 个活跃 owner 可用`],
-    ["近7天 Top10 占比", fmtPct(recent7Top10 / recent7ModuleTotal), `Top 10 贡献 ${fmtNumber(recent7Top10)} 个近 7 天新增模块`],
-    ["近7天一次性贡献", fmtPct(active7Single / active7Total), `${fmtNumber(active7Single)} 个活跃 owner 目前只发 1 个模块`]
+    ["近7天 Top10 占比", fmtPct(recent7Top10 / activeModuleTotal), `Top 10 覆盖 ${fmtNumber(recent7Top10)} 个近 7 天活跃模块`],
+    ["近7天单模块 owner", fmtPct(active7Single / active7Total), `${fmtNumber(active7Single)} 个活跃 owner 当前只有 1 个模块`]
   ];
   els.summaryGrid.innerHTML = metrics.map(([label, value, note]) => `
     <div class="metric">
@@ -721,14 +766,14 @@ function renderSummary() {
       <div class="metric-note">${note}</div>
     </div>
   `).join("");
-  const cachedText = s.cached ? "今日已分析" : "今日新分析";
+  const cachedText = s.cached ? "快照已载入" : "源站已刷新";
   els.statusPill.textContent = `${cachedText} · ${fmtUtcDateTime(s.captured_at)}`;
 }
 
 function recentNewUserModules(person) {
   return person.modules
-    .filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date))
-    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at) || String(left.name).localeCompare(String(right.name)));
+    .filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date))
+    .sort((left, right) => Date.parse(moduleFirstPublishedAt(right)) - Date.parse(moduleFirstPublishedAt(left)) || String(left.name).localeCompare(String(right.name)));
 }
 
 function renderNewUserContributions() {
@@ -739,12 +784,14 @@ function renderNewUserContributions() {
   const visibleRows = rows.slice(0, 60);
   const moduleCount = rows.reduce((sum, row) => sum + row.modules.length, 0);
   const downloads = rows.reduce((sum, row) => sum + row.modules.reduce((subtotal, module) => subtotal + Number(module.downloads || 0), 0), 0);
-  const returning = people.filter((person) => person.count > 1).length;
+  const repeatPublishers = people.filter((person) => person.versionCount > 1).length;
+  const recentWindow = state.snapshot.publication_windows?.recent7 || {};
+  const recentWindowLabel = recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to} UTC` : "当前 7 个 UTC 自然日";
   const summary = [
     ["UTC 今日新用户", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次贡献`],
-    ["近 7 天新用户", fmtNumber(people.length), "owner 历史首次贡献落在当前窗口"],
+    ["近 7 天新用户", fmtNumber(people.length), `${recentWindowLabel}，按 owner 历史首次贡献`],
     ["贡献模块", fmtNumber(moduleCount), "这些新用户在近 7 天发布的模块"],
-    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(returning)} 位新用户已贡献多个模块`]
+    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(repeatPublishers)} 位新用户已有第 2 次版本发布`]
   ];
 
   els.newUserContributionSummary.innerHTML = summary.map(([label, value, note]) => `
@@ -768,21 +815,16 @@ function renderNewUserContributions() {
   els.newUserContributionRows.innerHTML = visibleRows.map(({ person, modules }) => {
     const contributionDownloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
     const moduleHtml = modules.slice(0, 8).map((module) => {
-      const repoUrl = safeWebUrl(module.repository);
-      const moduleName = repoUrl
-        ? `<a href="${repoUrl}" target="_blank" rel="noreferrer">${moduleShort(module.name)}</a>`
-        : moduleShort(module.name);
+      const moduleName = externalLink(module.repository, moduleShort(module.name));
       return `
         <li>
           <div><strong>${moduleName}</strong><span>${categoryFor(module)}</span></div>
           <div><strong>${fmtNumber(module.downloads || 0)}</strong><span>下载</span></div>
-          <time datetime="${module.created_at}">${fmtUtcDateTime(module.created_at)}</time>
+          <time datetime="${moduleFirstPublishedAt(module)}">首发 ${fmtUtcDateTime(moduleFirstPublishedAt(module))}</time>
         </li>
       `;
     }).join("");
-    const owner = person.profile?.html_url
-      ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>`
-      : person.owner;
+    const owner = externalLink(person.profile?.html_url, person.owner);
     return `
       <article class="new-user-contribution-card">
         <div class="new-user-identity">
@@ -790,14 +832,14 @@ function renderNewUserContributions() {
           <strong>${owner}</strong>
           <span>首次贡献 ${fmtUtcDateTime(person.firstSeenAt || person.first)}</span>
           <div class="pill-row">
-            <span class="tag">${person.location}</span>
-            <span class="tag">${person.topCategories[0]?.[0] || "通用/实验"}</span>
+            <span class="tag">${escapeHtml(person.location)}</span>
+            <span class="tag">${escapeHtml(person.topCategories[0]?.[0] || "通用/实验")}</span>
           </div>
         </div>
         <ul class="new-user-module-list">${moduleHtml}</ul>
         <div class="new-user-contribution-stats">
           <div><strong>${fmtNumber(modules.length)}</strong><span>近7天模块</span></div>
-          <div><strong>${fmtNumber(person.count)}</strong><span>总模块</span></div>
+          <div><strong>${fmtNumber(person.versionCount)}</strong><span>版本发布</span></div>
           <div><strong>${fmtNumber(contributionDownloads)}</strong><span>当前下载</span></div>
         </div>
       </article>
@@ -820,7 +862,7 @@ function renderDaily() {
       <td>${day.date} UTC</td>
       <td><strong>${fmtNumber(day.count)}</strong></td>
       <td>${fmtNumber(day.ownerCount)}</td>
-      <td class="subtle">${day.modules.slice(0, 4).map(moduleShort).join("、")}${day.modules.length > 4 ? " ..." : ""}</td>
+      <td class="subtle">${day.modules.slice(0, 4).map((name) => escapeHtml(moduleShort(name))).join("、")}${day.modules.length > 4 ? " ..." : ""}</td>
     </tr>
   `).join("");
 }
@@ -903,8 +945,8 @@ function renderNewcomerInsights(newcomers) {
 
   const recentModules = people.flatMap((person) => recentNewUserModules(person));
   const topCategory = topEntries(newcomers.categories, 1)[0];
-  const singleShare = newcomers.singleModule / total;
-  const multiModule = total - newcomers.singleModule;
+  const singleShare = newcomers.singleRelease / total;
+  const repeatPublishers = total - newcomers.singleRelease;
   const priorities = people.reduce((counts, person) => {
     const priority = person.portrait?.priority || "P2";
     counts[priority] = (counts[priority] || 0) + 1;
@@ -916,10 +958,10 @@ function renderNewcomerInsights(newcomers) {
   const categoryShare = topCategory && recentModules.length ? topCategory[1] / recentModules.length : 0;
 
   const depthTitle = singleShare >= 0.6
-    ? "新用户以一次性试水为主"
+    ? "新用户以单次发布试水为主"
     : singleShare >= 0.4
-      ? "新增活跃，但复投仍需观察"
-      : "新用户已出现较强复投迹象";
+      ? "新增活跃，再次发布仍需观察"
+      : "新用户已出现较强重复发布迹象";
   const depthTone = singleShare >= 0.6 ? "risk" : singleShare >= 0.4 ? "warn" : "good";
   const focusTitle = focusCount
     ? `${fmtNumber(focusCount)} 位值得优先观察`
@@ -932,11 +974,11 @@ function renderNewcomerInsights(newcomers) {
 
   const insights = [
     {
-      label: "贡献深度",
+      label: "发布深度",
       value: fmtPct(singleShare),
       title: depthTitle,
-      body: `${fmtNumber(newcomers.singleModule)} / ${fmtNumber(total)} 人目前只发布 1 个模块，${fmtNumber(multiModule)} 人已有复投。`,
-      action: "优先跟进已复投用户，并在首次发布后 3 至 7 天观察第二次贡献。",
+      body: `${fmtNumber(newcomers.singleRelease)} / ${fmtNumber(total)} 人目前仅有 1 次版本发布，${fmtNumber(repeatPublishers)} 人已有再次发布。`,
+      action: "优先跟进已有再次发布的用户，并在首次发布后 3 至 7 天观察后续版本或第二个模块。",
       tone: depthTone
     },
     {
@@ -954,7 +996,7 @@ function renderNewcomerInsights(newcomers) {
       value: `${fmtNumber(priorities.P0)} P0 · ${fmtNumber(priorities.P1)} P1`,
       title: focusTitle,
       body: `${fmtNumber(priorities.P2)} 位仍处于低证据或单次贡献观察阶段。`,
-      action: focusCount ? "先核对代表模块，再做轻触达、案例共创或社区专题邀约。" : "暂不做强身份判断，先观察模块质量与后续复投。",
+      action: focusCount ? "先核对代表模块，再做轻触达、案例共创或社区专题邀约。" : "暂不做强身份判断，先观察模块质量与后续发布。",
       tone: focusCount ? "good" : "warn"
     },
     {
@@ -1002,9 +1044,7 @@ function renderNewcomerInsights(newcomers) {
     const priority = person.portrait?.priority || "P2";
     const modules = recentNewUserModules(person);
     const downloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
-    const owner = person.profile?.html_url
-      ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>`
-      : person.owner;
+    const owner = externalLink(person.profile?.html_url, person.owner);
     return `
       <article class="newcomer-focus-card">
         <div class="newcomer-focus-head">
@@ -1012,16 +1052,16 @@ function renderNewcomerInsights(newcomers) {
           <span class="tag ${priority === "P0" ? "hot" : priority === "P1" ? "warn" : ""}">${priority}</span>
         </div>
         <div class="pill-row">
-          <span class="tag">${person.topCategories[0]?.[0] || "通用/实验"}</span>
-          <span class="tag">${person.identity}</span>
+          <span class="tag">${escapeHtml(person.topCategories[0]?.[0] || "通用/实验")}</span>
+          <span class="tag">${escapeHtml(person.identity)}</span>
         </div>
-        <p>${person.portrait?.priorityReason || "先观察模块质量与后续复投"}</p>
+        <p>${escapeHtml(person.portrait?.priorityReason || "先观察模块质量与后续发布")}</p>
         <div class="newcomer-focus-metrics">
-          <span><strong>${fmtNumber(modules.length)}</strong> 近7天模块</span>
+          <span><strong>${fmtNumber(modules.length)}</strong> 近7天新增模块</span>
           <span><strong>${fmtNumber(downloads)}</strong> 当前下载</span>
           <span><strong>${fmtPct(person.portrait?.repoRatio || 0, 0)}</strong> repo</span>
         </div>
-        <p class="newcomer-insight-action">${newcomerActionFor(person)}</p>
+        <p class="newcomer-insight-action">${escapeHtml(newcomerActionFor(person))}</p>
       </article>
     `;
   }).join("");
@@ -1040,7 +1080,7 @@ function renderNewcomers() {
     ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
     ["近7天可判定地区人数", fmtPct(in7.length ? newcomers.withLocation / in7.length : 0), `${fmtNumber(newcomers.withLocation)} / ${fmtNumber(in7.length)} 个新增 owner 的公开 location 可归类`],
     ["近7天高置信画像", fmtPct(in7.length ? newcomers.highConfidence / in7.length : 0), `${fmtNumber(newcomers.highConfidence)} / ${fmtNumber(in7.length)} 个画像置信度 >= 66%，AI 高置信 ${fmtNumber(newcomers.highConfidenceAi)}`],
-    ["近7天一次性新增占比", fmtPct(in7.length ? newcomers.singleModule / in7.length : 0), `${fmtNumber(newcomers.singleModule)} / ${fmtNumber(in7.length)} 人目前只发 1 个模块`],
+    ["近7天仅1次发布占比", fmtPct(in7.length ? newcomers.singleRelease / in7.length : 0), `${fmtNumber(newcomers.singleRelease)} / ${fmtNumber(in7.length)} 人目前只有 1 次版本发布`],
     ["近7天新增主方向", topCategory ? topCategory[0] : "暂无", topCategory ? `近 7 天新增 owner 模块中 ${fmtNumber(topCategory[1])} 个命中` : "近 7 天暂无新增人员"],
     ["近7天组织字段填写", fmtPct(in7.length ? newcomers.withCompany / in7.length : 0), `${fmtNumber(newcomers.withCompany)} / ${fmtNumber(in7.length)} 个 owner 填写 company`]
   ];
@@ -1069,7 +1109,7 @@ function renderNewcomers() {
 function renderNewcomerModuleMap(people) {
   if (!els.newcomerModuleMap) return;
   if (els.newcomerMapNote) {
-    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date)).length, 0);
+    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date)).length, 0);
     els.newcomerMapNote.textContent = `${fmtNumber(people.length)} 个新增 owner，对应 ${fmtNumber(moduleCount)} 个近 7 天新增模块`;
   }
   if (!people.length) {
@@ -1078,26 +1118,26 @@ function renderNewcomerModuleMap(people) {
   }
   els.newcomerModuleMap.innerHTML = people.map((person) => {
     const recentModules = person.modules
-      .filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date))
-      .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)) || String(a.name).localeCompare(String(b.name)));
+      .filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date))
+      .sort((a, b) => dayKey(moduleFirstPublishedAt(b)).localeCompare(dayKey(moduleFirstPublishedAt(a))) || String(a.name).localeCompare(String(b.name)));
     const moduleHtml = recentModules.map((module) => {
       const repoUrl = safeWebUrl(module.repository);
-      const repo = repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noreferrer">repo</a>` : module.repository ? `<span class="tag warn">repo 非链接</span>` : `<span class="tag risk">repo 未填</span>`;
-      return `<li><strong>${moduleShort(module.name)}</strong><span>${fmtUtcDateTime(module.created_at)} · ${categoryFor(module)} · ${repo}</span></li>`;
+      const repo = repoUrl ? externalLink(repoUrl, "repo") : module.repository ? `<span class="tag warn">repo 非链接</span>` : `<span class="tag risk">repo 未填</span>`;
+      return `<li><strong>${escapeHtml(moduleShort(module.name))}</strong><span>首发 ${fmtUtcDateTime(moduleFirstPublishedAt(module))} · ${escapeHtml(categoryFor(module))} · ${repo}</span></li>`;
     }).join("");
     return `
       <div class="owner-module-card">
         <div>
-          <strong>${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}</strong>
-          <p class="subtle">${person.source.label} · ${person.source.evidence}</p>
+          <strong>${externalLink(person.profile?.html_url, person.owner)}</strong>
+          <p class="subtle">${escapeHtml(person.source.label)} · ${escapeHtml(person.source.evidence)}</p>
         </div>
         <div class="pill-row">
-          <span class="tag">${person.location}</span>
-          <span class="tag">${person.identity}</span>
+          <span class="tag">${escapeHtml(person.location)}</span>
+          <span class="tag">${escapeHtml(person.identity)}</span>
           <span class="tag ${person.portrait?.priority === "P0" ? "hot" : person.portrait?.priority === "P1" ? "warn" : ""}">${person.portrait?.priority || "P2"}</span>
         </div>
         <ul class="module-mini-list">${moduleHtml}</ul>
-        <p class="subtle action-line">${newcomerActionFor(person)}</p>
+        <p class="subtle action-line">${escapeHtml(newcomerActionFor(person))}</p>
       </div>
     `;
   }).join("");
@@ -1109,16 +1149,23 @@ function renderDataReconciliation() {
   const s = state.snapshot;
   const derived = s.derived_metrics || {};
   const quality = s.data_quality || {};
+  const integrity = s.source_integrity || {};
+  const recentWindow = s.publication_windows?.recent7 || {};
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
-  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(module.created_at, s.date)).length, 0);
+  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(moduleFirstPublishedAt(module), s.date)).length, 0);
   const cards = [
     ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
+    ["近7天 UTC 窗口", recentWindow.from && recentWindow.to ? `${recentWindow.from} 至 ${recentWindow.to}` : "未记录", "首尾日期均包含，共 7 个 UTC 自然日；第 8 个日期不计入。"],
     ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `导出站点当前拼出 ${fmtNumber(derived.module_array_count || a.modules.length)} 条最新模块；必须等于 statistics.total_modules。`],
-    ["大盘 Packages", fmtNumber(a.stats.total_packages || 0), "来自导出站点 packages.csv 的包/版本口径，不能和 owner 人数相加对比。"],
+    ["当前子包数量", fmtNumber(a.stats.total_packages || 0), "各模块最新有效版本的 package_count 之和，不是版本记录数。"],
+    ["大小字段缺失", `${fmtNumber(Math.max(Number(integrity.latest_module_missing_line_count ?? 0), Number(integrity.latest_module_missing_package_count ?? 0)))} 个模块`, `源站当前版本中 line_count 缺失 ${fmtNumber(integrity.latest_module_missing_line_count ?? 0)} 个、package_count 缺失 ${fmtNumber(integrity.latest_module_missing_package_count ?? 0)} 个；汇总时空值按 0。`],
+    ["历史版本记录", fmtNumber(a.stats.total_versions || 0), "packages.csv 中全部非撤回版本发布记录。"],
     ["贡献者 owner", fmtNumber(derived.owner_count || a.contributors.length), "从模块名 owner/package 的 owner 段去重得到，是本面板的人数口径。"],
-    ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count || active7.length), "近 7 天内发过新增模块的 owner，不要求是第一次出现。"],
-    ["近7天新增 owner", fmtNumber(derived.recent7_new_owner_count || a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
-    ["新增 owner 对应模块", fmtNumber(derived.recent7_new_owner_module_count || newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
+    ["近7天活跃 owner", fmtNumber(derived.recent7_active_owner_count ?? active7.length), "近 7 天内有过非撤回版本发布的 owner，不要求是第一次出现。"],
+    ["近7天活跃模块", fmtNumber(derived.recent7_active_module_count ?? 0), `对应 ${fmtNumber(derived.recent7_version_release_count ?? 0)} 次版本发布。`],
+    ["近7天新增模块", fmtNumber(derived.recent7_new_module_count ?? a.recent7Count), "模块首次发布时间落在近 7 个 UTC 自然日内。"],
+    ["近7天新增 owner", fmtNumber(derived.recent7_new_owner_count ?? a.newcomers.in7.length), "owner 首次出现日期在近 7 天内，才算新增人。"],
+    ["新增 owner 对应模块", fmtNumber(derived.recent7_new_owner_module_count ?? newcomerModuleCount), "近 7 天新增 owner 在同一窗口内发布的模块数。"]
   ];
   const checkHtml = (quality.checks || []).map((check) => `
     <div class="quality-check ${check.passed ? "passed" : check.severity}">
@@ -1139,16 +1186,17 @@ function renderDataReconciliation() {
 function renderTiers() {
   const contributors = state.analysis.contributors.filter((person) => person.recent7 > 0);
   const tiers = [
-    ["近7天高活跃", contributors.filter((person) => person.recent7 >= 5), "近 7 天新增 5 个以上模块，适合重点跟进和案例扩散。"],
-    ["近7天复投", contributors.filter((person) => person.recent7 >= 2 && person.recent7 < 5), "近 7 天新增 2-4 个模块，已经出现连续贡献迹象。"],
-    ["近7天轻量活跃", contributors.filter((person) => person.recent7 === 1 && person.count > 1), "近 7 天新增 1 个模块，但历史上不是第一次贡献。"],
-    ["近7天新增首发", contributors.filter((person) => person.recent7 === 1 && person.count === 1), "近 7 天首次发布 1 个模块，是新增转化和留存观察重点。"]
+    ["近7天高活跃", contributors.filter((person) => person.recent7 >= 5), "近 7 天有 5 个以上活跃模块，适合重点跟进和案例扩散。"],
+    ["近7天多模块活跃", contributors.filter((person) => person.recent7 >= 2 && person.recent7 < 5), "近 7 天有 2-4 个活跃模块，已经出现多模块发布迹象。"],
+    ["近7天轻量活跃", contributors.filter((person) => person.recent7 === 1 && person.count > 1), "近 7 天有 1 个活跃模块，历史上不止一个模块。"],
+    ["近7天单模块回访", contributors.filter((person) => person.recent7 === 1 && person.count === 1 && !isWithinUtcWindow(person.first, state.snapshot.date)), "历史单模块 owner 近 7 天发布了新版本，不属于新增用户。"],
+    ["近7天新增首发", contributors.filter((person) => person.recent7 === 1 && person.count === 1 && isWithinUtcWindow(person.first, state.snapshot.date)), "近 7 天首次发布 1 个模块，是新增转化和留存观察重点。"]
   ];
   els.tierList.innerHTML = tiers.map(([name, people, note]) => `
     <div class="tier-card">
       <strong>${name}：${fmtNumber(people.length)} 人</strong>
       <p>${note}</p>
-      <div class="pill-row">${people.slice(0, 10).map((person) => `<span class="tag">${person.owner} +${fmtNumber(person.recent7)}</span>`).join("")}</div>
+      <div class="pill-row">${people.slice(0, 10).map((person) => `<span class="tag">${escapeHtml(person.owner)} +${fmtNumber(person.recent7)}</span>`).join("")}</div>
     </div>
   `).join("");
 }
@@ -1156,7 +1204,7 @@ function renderTiers() {
 function renderCategories() {
   const categories = {};
   for (const module of state.analysis.modules) {
-    if (!isWithinUtcWindow(module.created_at, state.snapshot.date)) continue;
+    if (!isWithinUtcWindow(moduleFirstPublishedAt(module), state.snapshot.date)) continue;
     const category = categoryFor(module);
     categories[category] = (categories[category] || 0) + 1;
   }
@@ -1164,7 +1212,7 @@ function renderCategories() {
   const max = Math.max(1, ...entries.map(([, value]) => value));
   els.categoryList.innerHTML = entries.map(([name, value]) => `
     <div class="bar-item">
-      <div>${name}</div>
+      <div>${escapeHtml(name)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${(value / max) * 100}%"></div></div>
       <strong>${fmtNumber(value)}</strong>
     </div>
@@ -1192,7 +1240,7 @@ function renderBarList(container, data, limit) {
   }
   container.innerHTML = entries.map(([name, value]) => `
     <div class="bar-item">
-      <div>${name}</div>
+      <div>${escapeHtml(name)}</div>
       <div class="bar-track"><div class="bar-fill" style="width:${(value / max) * 100}%"></div></div>
       <strong>${fmtNumber(value)}</strong>
     </div>
@@ -1211,9 +1259,9 @@ function renderPortraitDetails(person) {
         <span class="tag hot">AI画像</span>
         <span class="tag ${Number(ai.confidence) >= 0.66 ? "hot" : Number(ai.confidence) >= 0.42 ? "warn" : "risk"}">AI ${fmtPct(Number(ai.confidence), 0)}</span>
       </div>
-      <div>${ai.summary}</div>
-      <div class="subtle">证据：${(ai.evidence || []).slice(0, 2).join("；") || "未给出"}</div>
-      ${(ai.risks || []).length ? `<div class="subtle">风险：${ai.risks.slice(0, 2).join("；")}</div>` : ""}
+      <div>${escapeHtml(ai.summary)}</div>
+      <div class="subtle">证据：${escapeHtml((ai.evidence || []).slice(0, 2).join("；") || "未给出")}</div>
+      ${(ai.risks || []).length ? `<div class="subtle">风险：${escapeHtml(ai.risks.slice(0, 2).join("；"))}</div>` : ""}
     </div>
   ` : "";
   return `
@@ -1223,14 +1271,14 @@ function renderPortraitDetails(person) {
         <span class="tag ${confidenceClass}">置信度 ${fmtPct(portrait.confidence, 0)}</span>
       </div>
       <div class="portrait-lines">
-        <div>${portrait.accountAgeLabel}</div>
-        <div>${portrait.influenceLabel} · followers ${fmtNumber(portrait.followers)}</div>
-        <div>${portrait.paceLabel} · ${portrait.primaryCategory}</div>
-        <div>${portrait.transparencyLabel} · repo ${fmtPct(portrait.repoRatio, 0)}</div>
-        <div>${portrait.profileLabel}</div>
+        <div>${escapeHtml(portrait.accountAgeLabel)}</div>
+        <div>${escapeHtml(portrait.influenceLabel)} · followers ${fmtNumber(portrait.followers)}</div>
+        <div>${escapeHtml(portrait.paceLabel)} · ${escapeHtml(portrait.primaryCategory)}</div>
+        <div>${escapeHtml(portrait.transparencyLabel)} · repo ${fmtPct(portrait.repoRatio, 0)}</div>
+        <div>${escapeHtml(portrait.profileLabel)}</div>
       </div>
-      <div class="subtle">${portrait.priorityReason}</div>
-      <div class="evidence-line">${evidence}</div>
+      <div class="subtle">${escapeHtml(portrait.priorityReason)}</div>
+      <div class="evidence-line">${escapeHtml(evidence)}</div>
       ${aiHtml}
     </div>
   `;
@@ -1254,8 +1302,8 @@ function renderProfileSummary(person) {
   }
   return `
     <div class="profile-summary">
-      <strong>${profile.html_url ? `<a href="${profile.html_url}" target="_blank" rel="noreferrer">${profile.name || profile.login || person.owner}</a>` : profile.name || person.owner}</strong>
-      <span>${profile.location || "地区未填写"} · ${cleanCompany(profile.company) || "组织未填写"}</span>
+      <strong>${externalLink(profile.html_url, profile.name || profile.login || person.owner)}</strong>
+      <span>${escapeHtml(profile.location || "地区未填写")} · ${escapeHtml(cleanCompany(profile.company) || "组织未填写")}</span>
       <span>followers ${fmtNumber(profile.followers)} / repos ${fmtNumber(profile.public_repos)}</span>
     </div>
   `;
@@ -1267,9 +1315,9 @@ function renderContributorCard(person, options = {}) {
   const tags = person.signals.length ? person.signals : ["正常"];
   const modules = person.modules
     .slice()
-    .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)))
+    .sort((a, b) => dayKey(moduleLastPublishedAt(b)).localeCompare(dayKey(moduleLastPublishedAt(a))))
     .slice(0, isNewcomer ? 5 : 6)
-    .map((module) => moduleShort(module.name));
+    .map((module) => escapeHtml(moduleShort(module.name)));
   const priorityClass = person.portrait?.priority === "P0" ? "hot" : person.portrait?.priority === "P1" ? "warn" : "";
   const identityClass = person.identityConfidence >= 0.68 ? "hot" : person.identityConfidence >= 0.45 ? "warn" : "";
   const confidence = person.portrait?.confidence || 0;
@@ -1281,9 +1329,9 @@ function renderContributorCard(person, options = {}) {
         <div class="person-card-head compact-card-head">
           <div>
             <div class="owner-title">
-              ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
+              ${externalLink(person.profile?.html_url, person.owner)}
             </div>
-            <div class="subtle">${person.first} UTC 至 ${person.last} UTC · ${person.location}</div>
+            <div class="subtle">${person.first} UTC 至 ${person.last} UTC · ${escapeHtml(person.location)}</div>
           </div>
           <div class="pill-row compact-pills">
             <span class="tag ${priorityClass}">${person.portrait?.priority || "P2"}</span>
@@ -1298,9 +1346,9 @@ function renderContributorCard(person, options = {}) {
         </div>
 
         <div class="compact-line">
-          <span class="tag">${category}</span>
-          <span class="tag ${identityClass}">${person.identity}</span>
-          ${tags.slice(0, 3).map((tag) => `<span class="tag ${tagClassFor(tag)}">${tag}</span>`).join("")}
+          <span class="tag">${escapeHtml(category)}</span>
+          <span class="tag ${identityClass}">${escapeHtml(person.identity)}</span>
+          ${tags.slice(0, 3).map((tag) => `<span class="tag ${tagClassFor(tag)}">${escapeHtml(tag)}</span>`).join("")}
         </div>
 
         <div class="compact-modules subtle">${modules.join("、")}</div>
@@ -1315,7 +1363,7 @@ function renderContributorCard(person, options = {}) {
             <section>
               <h3>方向与身份</h3>
               <p class="subtle">身份置信 ${fmtPct(person.identityConfidence, 0)}</p>
-              <p class="subtle">${person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词"}</p>
+              <p class="subtle">${escapeHtml(person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词")}</p>
             </section>
             <section class="full-row">
               <h3>画像判断</h3>
@@ -1332,7 +1380,7 @@ function renderContributorCard(person, options = {}) {
       <div class="person-card-head">
         <div>
           <div class="owner-title">
-            ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
+            ${externalLink(person.profile?.html_url, person.owner)}
           </div>
           <div class="subtle">${person.first} UTC 至 ${person.last} UTC</div>
         </div>
@@ -1344,8 +1392,8 @@ function renderContributorCard(person, options = {}) {
 
       <div class="person-stats">
         <div><strong>${fmtNumber(person.count)}</strong><span>模块</span></div>
-        <div><strong>${fmtNumber(person.recent7)}</strong><span>近7天</span></div>
-        <div><strong>${person.last} UTC</strong><span>最近新增</span></div>
+        <div><strong>${fmtNumber(person.recent7)}</strong><span>近7天活跃模块</span></div>
+        <div><strong>${person.last} UTC</strong><span>最近发布</span></div>
       </div>
 
       <div class="person-body">
@@ -1356,11 +1404,11 @@ function renderContributorCard(person, options = {}) {
         <section>
           <h3>方向与身份</h3>
           <div class="pill-row">
-            <span class="tag">${category}</span>
-            <span class="tag ${identityClass}">${person.identity}</span>
+            <span class="tag">${escapeHtml(category)}</span>
+            <span class="tag ${identityClass}">${escapeHtml(person.identity)}</span>
           </div>
-          <p class="subtle">${person.location} · 身份置信 ${fmtPct(person.identityConfidence, 0)}</p>
-          <p class="subtle">${person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词"}</p>
+          <p class="subtle">${escapeHtml(person.location)} · 身份置信 ${fmtPct(person.identityConfidence, 0)}</p>
+          <p class="subtle">${escapeHtml(person.topKeywords.map(([key]) => key).slice(0, 6).join("、") || "暂无关键词")}</p>
         </section>
         <section class="full-row">
           <h3>画像判断</h3>
@@ -1368,11 +1416,11 @@ function renderContributorCard(person, options = {}) {
         </section>
         <section>
           <h3>问题提示</h3>
-          <div class="pill-row">${tags.map((tag) => `<span class="tag ${tagClassFor(tag)}">${tag}</span>`).join("")}</div>
+          <div class="pill-row">${tags.map((tag) => `<span class="tag ${tagClassFor(tag)}">${escapeHtml(tag)}</span>`).join("")}</div>
         </section>
         <section>
           <h3>${isNewcomer ? "建议动作" : "代表模块"}</h3>
-          <p class="subtle">${isNewcomer ? newcomerActionFor(person) : modules.join("、")}</p>
+          <p class="subtle">${isNewcomer ? escapeHtml(newcomerActionFor(person)) : modules.join("、")}</p>
           ${isNewcomer ? `<p class="subtle module-line">${modules.join("、")}</p>` : ""}
         </section>
       </div>
@@ -1415,14 +1463,14 @@ function renderContributors() {
 async function load(force = false) {
   els.refreshBtn.disabled = true;
   els.statusPill.textContent = force ? "刷新中" : "分析中";
-  els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">正在拉取 business-analytics 导出数据并生成今日快照...</div>`;
+  els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">正在读取最新数据快照并生成页面...</div>`;
   try {
     state.snapshot = await fetchSnapshot(force);
     state.analysis = analyze(state.snapshot);
     render();
   } catch (error) {
     els.statusPill.textContent = "分析失败";
-    els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">分析失败：${error.message}</div>`;
+    els.summaryGrid.innerHTML = `<div class="loading" style="grid-column:1 / -1">分析失败：${escapeHtml(error.message)}</div>`;
   } finally {
     els.refreshBtn.disabled = false;
   }

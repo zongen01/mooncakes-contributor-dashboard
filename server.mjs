@@ -1,14 +1,20 @@
 import { createServer } from "node:http";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
-import { buildSnapshotFromExports, exportsBaseUrl, todayInUtc } from "./lib/mooncakes-exports.mjs";
+import { SNAPSHOT_ALGORITHM_VERSION, exportsBaseUrl, todayInUtc } from "./lib/mooncakes-exports.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const snapshotDir = path.join(__dirname, "data", "snapshots");
+const buildScript = path.join(__dirname, "scripts", "build-snapshot.mjs");
+const publicSnapshotFile = path.join(publicDir, "data", "latest.json");
 const port = Number(process.env.PORT || 4177);
+const execFileAsync = promisify(execFile);
+let snapshotBuildInFlight = null;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -18,8 +24,43 @@ const mimeTypes = {
   ".svg": "image/svg+xml; charset=utf-8"
 };
 
-function isCurrentExportSnapshot(snapshot) {
-  return snapshot?.source?.exports_base_url === exportsBaseUrl() && snapshot?.timezone === "UTC";
+function isCurrentExportSnapshot(snapshot, date) {
+  return snapshot?.source?.exports_base_url === exportsBaseUrl()
+    && snapshot?.date === date
+    && snapshot?.timezone === "UTC"
+    && snapshot?.derived_metrics?.algorithm_version === SNAPSHOT_ALGORITHM_VERSION
+    && snapshot?.data_quality?.status === "pass";
+}
+
+async function readCurrentSnapshot(file, date) {
+  try {
+    const snapshot = JSON.parse(await readFile(file, "utf8"));
+    return isCurrentExportSnapshot(snapshot, date) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+function newestSnapshot(snapshots) {
+  return snapshots
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right.captured_at || 0) - Date.parse(left.captured_at || 0))[0] || null;
+}
+
+async function buildSnapshot(file) {
+  if (!snapshotBuildInFlight) {
+    snapshotBuildInFlight = (async () => {
+      await execFileAsync(process.execPath, [buildScript, file], {
+        cwd: __dirname,
+        env: process.env,
+        maxBuffer: 4 * 1024 * 1024
+      });
+      return JSON.parse(await readFile(file, "utf8"));
+    })().finally(() => {
+      snapshotBuildInFlight = null;
+    });
+  }
+  return snapshotBuildInFlight;
 }
 
 async function makeSnapshot(force = false) {
@@ -28,16 +69,14 @@ async function makeSnapshot(force = false) {
   const file = path.join(snapshotDir, `${date}.json`);
 
   if (!force) {
-    try {
-      const cached = JSON.parse(await readFile(file, "utf8"));
-      if (isCurrentExportSnapshot(cached)) return { ...cached, cached: true };
-    } catch {
-      // No daily snapshot yet.
-    }
+    const cached = newestSnapshot(await Promise.all([
+      readCurrentSnapshot(file, date),
+      readCurrentSnapshot(publicSnapshotFile, date)
+    ]));
+    if (cached) return { ...cached, cached: true };
   }
 
-  const snapshot = await buildSnapshotFromExports({ snapshotDate: date });
-  await writeFile(file, JSON.stringify(snapshot, null, 2));
+  const snapshot = await buildSnapshot(file);
   return { ...snapshot, cached: false };
 }
 
@@ -53,8 +92,8 @@ async function sendJson(res, body, status = 200) {
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-  const resolved = path.normalize(path.join(publicDir, pathname));
-  if (!resolved.startsWith(publicDir)) {
+  const resolved = path.resolve(publicDir, `.${pathname}`);
+  if (resolved !== publicDir && !resolved.startsWith(`${publicDir}${path.sep}`)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;

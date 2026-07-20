@@ -15,8 +15,8 @@
         </div>
         <div class="top-actions">
           <div class="status-pill" id="statusPill">等待分析 · UTC</div>
-          <a class="button-link" href="https://github.com/zongen01/mooncakes-contributor-dashboard/actions/workflows/pages.yml" target="_blank" rel="noreferrer">手动触发 AI 画像</a>
-          <button id="refreshBtn" type="button">刷新今日数据</button>
+          <a class="button-link" href="https://github.com/zongen01/mooncakes-contributor-dashboard/actions/workflows/pages.yml" target="_blank" rel="noreferrer">查看发布任务</a>
+          <button id="refreshBtn" type="button">重新载入最新快照</button>
         </div>
       </header>
 
@@ -101,7 +101,7 @@
           <div class="panel-head">
             <div>
               <h2>贡献者分层</h2>
-              <p>按近 7 天新增模块数量看高活跃、复投和首发。</p>
+              <p>按近 7 天有版本发布的活跃模块数量分层，并单独区分历史回访与新增首发。</p>
             </div>
           </div>
           <div id="tierList" class="tier-list"></div>
@@ -155,8 +155,8 @@
         <article class="panel span-8">
           <div class="panel-head">
             <div>
-              <h2>每天新增模块</h2>
-              <p>按模块 `created_at` 的 UTC 日期统计，作为贡献者活跃度的补充证据。</p>
+              <h2>每天首次发布模块</h2>
+              <p>按模块 `first_published_at` 的 UTC 日期统计；后续版本更新不会重复算作新增。</p>
             </div>
             <select id="rangeSelect" aria-label="选择日期范围">
               <option value="7" selected>最近 7 天</option>
@@ -171,7 +171,7 @@
                 <tr>
                   <th>日期（UTC）</th>
                   <th>新增模块</th>
-                  <th>新增 owner</th>
+                  <th>涉及 owner</th>
                   <th>代表模块</th>
                 </tr>
               </thead>
@@ -192,6 +192,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260720-owner-history" type="module"></script>
+    <script src="app.js?v=20260720-publication-audit-v2" type="module"></script>
   </body>
 </html>

@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: Build daily data
         run: |
           if npm run build:data; then
@@ -66,6 +66,8 @@ jobs:
           RUN_AI_PORTRAITS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ai_portraits || 'false' }}
           AI_ANALYSIS_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.ai_analysis_days || '7' }}
           AI_TARGET_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.ai_target_scope || 'active' }}
+      - name: Validate dashboard snapshot
+        run: npm run validate:data
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
