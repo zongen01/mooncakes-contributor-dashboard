@@ -6,6 +6,7 @@
 - 页面由 GitHub Pages 静态托管。
 - 默认数据源：`http://192.168.86.2:18080/`。
 - 基础数据只读取导出站点的 `users.csv`、`packages.csv`、`module-download-totals.csv`。
+- GitHub Actions 要自动刷新数据时，runner 必须能访问该导出站点；普通 push 会在远端不可达时部署已提交的 `public/data/latest.json`。
 - 如果仓库配置了 `OPENAI_API_KEY` Secret，会在每日构建时对近 7 天活跃 owner 生成 AI 画像；未配置时自动退回规则画像。
 
 本地预览：

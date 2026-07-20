@@ -50,7 +50,16 @@ jobs:
         with:
           node-version: 20
       - name: Build daily data
-        run: npm run build:data
+        run: |
+          if npm run build:data; then
+            exit 0
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "::warning::Cannot reach MOONCAKES_EXPORTS_BASE_URL from GitHub Actions; deploying the committed public/data/latest.json snapshot from this push."
+            node -e "const fs=require('fs'); const s=JSON.parse(fs.readFileSync('public/data/latest.json','utf8')); if (!s.source || !s.source.exports_base_url) throw new Error('public/data/latest.json is not an exports snapshot'); console.log('Using committed snapshot', s.date, s.modules.length, 'modules');"
+            exit 0
+          fi
+          exit 1
         env:
           MOONCAKES_EXPORTS_BASE_URL: ${{ vars.MOONCAKES_EXPORTS_BASE_URL || 'http://192.168.86.2:18080' }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
