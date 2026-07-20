@@ -573,6 +573,173 @@ tr:last-child td {
   gap: 14px;
 }
 
+.new-user-contribution-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: #d7c9bc;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(216, 139, 110, 0.16), transparent 28%),
+    linear-gradient(180deg, #fffdf9 0%, #ffffff 42%);
+}
+
+.new-user-contribution-panel::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent), #e6bc86);
+  content: "";
+}
+
+.timezone-badge {
+  border: 1px solid rgba(183, 97, 69, 0.28);
+  border-radius: 999px;
+  background: rgba(216, 139, 110, 0.1);
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 7px 10px;
+}
+
+.new-user-contribution-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.new-user-metric {
+  min-height: 104px;
+  border: 1px solid rgba(183, 97, 69, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 14px;
+}
+
+.new-user-list-head {
+  border-top: 1px solid rgba(183, 97, 69, 0.13);
+  padding-top: 14px;
+}
+
+.new-user-contribution-list {
+  display: grid;
+  gap: 10px;
+}
+
+.new-user-contribution-card {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(0, 2fr) minmax(120px, 0.55fr);
+  gap: 16px;
+  align-items: start;
+  border: 1px solid #e7ddd4;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 5px 18px rgba(79, 54, 38, 0.05);
+  padding: 14px;
+}
+
+.new-user-identity {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.new-user-identity > strong {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.new-user-identity > span:not(.new-user-kicker) {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.new-user-kicker {
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.new-user-module-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.new-user-module-list li {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 76px 152px;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid #f0ece8;
+  padding: 0 0 7px;
+}
+
+.new-user-module-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.new-user-module-list li > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.new-user-module-list strong,
+.new-user-module-list span,
+.new-user-module-list time {
+  overflow-wrap: anywhere;
+}
+
+.new-user-module-list span,
+.new-user-module-list time {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.new-user-module-list time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+}
+
+.new-user-contribution-stats {
+  display: grid;
+  gap: 8px;
+}
+
+.new-user-contribution-stats > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid #eee7e1;
+  padding-bottom: 7px;
+}
+
+.new-user-contribution-stats > div:last-child {
+  border-bottom: 0;
+}
+
+.new-user-contribution-stats strong {
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.new-user-contribution-stats span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .newcomer-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -809,6 +976,26 @@ tr:last-child td {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .new-user-contribution-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .new-user-contribution-card {
+    grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  }
+
+  .new-user-contribution-stats {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .new-user-contribution-stats > div {
+    border-right: 1px solid #eee7e1;
+    border-bottom: 0;
+    padding-right: 10px;
+    padding-bottom: 0;
+  }
+
   .newcomer-bars,
   .quality-check-list,
   .reconcile-grid {
@@ -840,6 +1027,7 @@ tr:last-child td {
   }
 
   .newcomer-summary-grid,
+  .new-user-contribution-summary,
   .newcomer-bars,
   .owner-module-list,
   .quality-check-list,
@@ -847,6 +1035,23 @@ tr:last-child td {
   .person-body,
   .person-stats {
     grid-template-columns: 1fr;
+  }
+
+  .new-user-contribution-card,
+  .new-user-module-list li,
+  .new-user-contribution-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .new-user-module-list time {
+    text-align: left;
+  }
+
+  .new-user-contribution-stats > div {
+    border-right: 0;
+    border-bottom: 1px solid #eee7e1;
+    padding-right: 0;
+    padding-bottom: 7px;
   }
 
   .module-mini-list li {

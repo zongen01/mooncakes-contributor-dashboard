@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { buildSnapshotFromExports, todayInShanghai } from "../lib/mooncakes-exports.mjs";
+import { buildSnapshotFromExports, todayInUtc } from "../lib/mooncakes-exports.mjs";
 
 const outputFile = process.argv[2] || "public/data/latest.json";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
@@ -65,7 +65,7 @@ function deriveMetrics(modules, statistics, snapshotDate) {
   const recent7NewOwnerModules = recent7Modules.filter((module) => recent7NewOwnerSet.has(ownerOf(module.name)));
 
   return {
-    algorithm_version: "2026-06-21.1",
+    algorithm_version: "2026-07-20.1",
     snapshot_date: snapshotDate,
     module_array_count: modules.length,
     statistics_total_modules: Number(statistics?.total_modules || 0),
@@ -382,7 +382,7 @@ async function buildAiPortraits(modules, githubProfiles, snapshotDate) {
 }
 
 async function main() {
-  const snapshotDate = todayInShanghai();
+  const snapshotDate = todayInUtc();
   const exportSnapshot = await buildSnapshotFromExports({ snapshotDate });
   const modules = exportSnapshot.modules || [];
   const statistics = exportSnapshot.statistics || {};
@@ -419,6 +419,7 @@ async function main() {
   const snapshot = {
     date: snapshotDate,
     captured_at: new Date().toISOString(),
+    timezone: exportSnapshot.timezone || "UTC",
     source: {
       ...(exportSnapshot.source || {}),
       ai_portraits: OPENAI_API_KEY ? "https://api.openai.com/v1/responses" : null

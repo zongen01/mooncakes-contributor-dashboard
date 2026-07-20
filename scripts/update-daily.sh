@@ -17,7 +17,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Mooncakes dashboard update"
+echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Starting Mooncakes dashboard update"
 
 git -C "$repo_dir" fetch origin main
 git -C "$repo_dir" worktree add --detach "$worktree_dir" origin/main
@@ -35,7 +35,7 @@ fi
 git config user.name "zongen01"
 git config user.email "zongen01@users.noreply.github.com"
 git add -- public/data/latest.json
-git commit -m "Update dashboard data $(date '+%Y-%m-%d')"
+git commit -m "Update dashboard data $(date -u '+%Y-%m-%d')"
 git push origin HEAD:main
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Mooncakes dashboard update published"
+echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Mooncakes dashboard update published"

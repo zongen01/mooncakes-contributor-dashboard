@@ -3,7 +3,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildSnapshotFromExports, exportsBaseUrl, todayInShanghai } from "./lib/mooncakes-exports.mjs";
+import { buildSnapshotFromExports, exportsBaseUrl, todayInUtc } from "./lib/mooncakes-exports.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -19,12 +19,12 @@ const mimeTypes = {
 };
 
 function isCurrentExportSnapshot(snapshot) {
-  return snapshot?.source?.exports_base_url === exportsBaseUrl();
+  return snapshot?.source?.exports_base_url === exportsBaseUrl() && snapshot?.timezone === "UTC";
 }
 
 async function makeSnapshot(force = false) {
   await mkdir(snapshotDir, { recursive: true });
-  const date = todayInShanghai();
+  const date = todayInUtc();
   const file = path.join(snapshotDir, `${date}.json`);
 
   if (!force) {

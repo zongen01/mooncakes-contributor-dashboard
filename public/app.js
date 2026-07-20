@@ -11,6 +11,9 @@ const els = {
   statusPill: document.querySelector("#statusPill"),
   refreshBtn: document.querySelector("#refreshBtn"),
   summaryGrid: document.querySelector("#summaryGrid"),
+  newUserContributionSummary: document.querySelector("#newUserContributionSummary"),
+  newUserContributionNote: document.querySelector("#newUserContributionNote"),
+  newUserContributionRows: document.querySelector("#newUserContributionRows"),
   dailyChart: document.querySelector("#dailyChart"),
   dailyRows: document.querySelector("#dailyRows"),
   issueList: document.querySelector("#issueList"),
@@ -44,7 +47,14 @@ function fmtPct(value, digits = 1) {
 }
 
 function dayKey(dateLike) {
-  return String(dateLike || "").slice(0, 10);
+  const parsed = new Date(dateLike);
+  return Number.isNaN(parsed.getTime()) ? String(dateLike || "").slice(0, 10) : parsed.toISOString().slice(0, 10);
+}
+
+function fmtUtcDateTime(dateLike) {
+  const parsed = new Date(dateLike);
+  if (Number.isNaN(parsed.getTime())) return `${String(dateLike || "-")} UTC`;
+  return `${parsed.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 function daysBetween(a, b) {
@@ -654,6 +664,7 @@ function render() {
   const analysis = state.analysis;
   if (!analysis) return;
   renderSummary();
+  renderNewUserContributions();
   renderDaily();
   renderIssues();
   renderNewcomers();
@@ -680,7 +691,7 @@ function renderSummary() {
   const metrics = [
     ["近7天活跃 owner", fmtNumber(active7.length), `近 7 天新增 ${fmtNumber(a.recent7Count)} 个模块`],
     ["近7天新增 owner", fmtNumber(a.newcomers.in7.length), "首次发布模块的 owner"],
-    ["今日新增 owner", fmtNumber(a.newcomers.today.length), `${s.date} 首次出现的 owner`],
+    ["今日新增 owner", fmtNumber(a.newcomers.today.length), `${s.date} UTC 首次出现的 owner`],
     ["近7天 GitHub 覆盖", fmtPct(active7Github / active7Total), `${fmtNumber(active7Github)} / ${fmtNumber(active7.length)} 个活跃 owner 可用`],
     ["近7天 Top10 占比", fmtPct(recent7Top10 / recent7ModuleTotal), `Top 10 贡献 ${fmtNumber(recent7Top10)} 个近 7 天新增模块`],
     ["近7天一次性贡献", fmtPct(active7Single / active7Total), `${fmtNumber(active7Single)} 个活跃 owner 目前只发 1 个模块`]
@@ -693,7 +704,90 @@ function renderSummary() {
     </div>
   `).join("");
   const cachedText = s.cached ? "今日已分析" : "今日新分析";
-  els.statusPill.textContent = `${cachedText} ${s.date}`;
+  els.statusPill.textContent = `${cachedText} · ${fmtUtcDateTime(s.captured_at)}`;
+}
+
+function recentNewUserModules(person) {
+  return person.modules
+    .filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS)
+    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at) || String(left.name).localeCompare(String(right.name)));
+}
+
+function renderNewUserContributions() {
+  if (!els.newUserContributionSummary || !els.newUserContributionRows) return;
+  const newcomers = state.analysis.newcomers;
+  const people = newcomers.in7;
+  const rows = people.map((person) => ({ person, modules: recentNewUserModules(person) }));
+  const visibleRows = rows.slice(0, 60);
+  const moduleCount = rows.reduce((sum, row) => sum + row.modules.length, 0);
+  const downloads = rows.reduce((sum, row) => sum + row.modules.reduce((subtotal, module) => subtotal + Number(module.downloads || 0), 0), 0);
+  const returning = people.filter((person) => person.count > 1).length;
+  const summary = [
+    ["UTC 今日新用户", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次贡献`],
+    ["近 7 天新用户", fmtNumber(people.length), "owner 历史首次贡献落在当前窗口"],
+    ["贡献模块", fmtNumber(moduleCount), "这些新用户在近 7 天发布的模块"],
+    ["当前累计下载", fmtNumber(downloads), `${fmtNumber(returning)} 位新用户已贡献多个模块`]
+  ];
+
+  els.newUserContributionSummary.innerHTML = summary.map(([label, value, note]) => `
+    <div class="new-user-metric">
+      <div class="metric-label">${label}</div>
+      <div class="mini-metric-value">${value}</div>
+      <div class="metric-note">${note}</div>
+    </div>
+  `).join("");
+
+  if (els.newUserContributionNote) {
+    const visibleNote = rows.length > visibleRows.length ? ` · 显示前 ${fmtNumber(visibleRows.length)} 位` : "";
+    els.newUserContributionNote.textContent = `${fmtNumber(people.length)} 位新用户 · ${fmtNumber(moduleCount)} 个模块${visibleNote} · 截止 ${fmtUtcDateTime(state.snapshot.captured_at)}`;
+  }
+
+  if (!rows.length) {
+    els.newUserContributionRows.innerHTML = `<div class="loading">近 7 天暂无首次贡献的新用户。</div>`;
+    return;
+  }
+
+  els.newUserContributionRows.innerHTML = visibleRows.map(({ person, modules }) => {
+    const firstModule = person.modules
+      .slice()
+      .sort((left, right) => Date.parse(left.created_at) - Date.parse(right.created_at))[0];
+    const contributionDownloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
+    const moduleHtml = modules.slice(0, 8).map((module) => {
+      const repoUrl = safeWebUrl(module.repository);
+      const moduleName = repoUrl
+        ? `<a href="${repoUrl}" target="_blank" rel="noreferrer">${moduleShort(module.name)}</a>`
+        : moduleShort(module.name);
+      return `
+        <li>
+          <div><strong>${moduleName}</strong><span>${categoryFor(module)}</span></div>
+          <div><strong>${fmtNumber(module.downloads || 0)}</strong><span>下载</span></div>
+          <time datetime="${module.created_at}">${fmtUtcDateTime(module.created_at)}</time>
+        </li>
+      `;
+    }).join("");
+    const owner = person.profile?.html_url
+      ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>`
+      : person.owner;
+    return `
+      <article class="new-user-contribution-card">
+        <div class="new-user-identity">
+          <span class="new-user-kicker">NEW CONTRIBUTOR</span>
+          <strong>${owner}</strong>
+          <span>首次贡献 ${fmtUtcDateTime(firstModule?.created_at)}</span>
+          <div class="pill-row">
+            <span class="tag">${person.location}</span>
+            <span class="tag">${person.topCategories[0]?.[0] || "通用/实验"}</span>
+          </div>
+        </div>
+        <ul class="new-user-module-list">${moduleHtml}</ul>
+        <div class="new-user-contribution-stats">
+          <div><strong>${fmtNumber(modules.length)}</strong><span>近7天模块</span></div>
+          <div><strong>${fmtNumber(person.count)}</strong><span>总模块</span></div>
+          <div><strong>${fmtNumber(contributionDownloads)}</strong><span>当前下载</span></div>
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function selectedDailyRows() {
@@ -708,7 +802,7 @@ function renderDaily() {
   drawChart(rows);
   els.dailyRows.innerHTML = rows.slice().reverse().map((day) => `
     <tr>
-      <td>${day.date}</td>
+      <td>${day.date} UTC</td>
       <td><strong>${fmtNumber(day.count)}</strong></td>
       <td>${fmtNumber(day.ownerCount)}</td>
       <td class="subtle">${day.modules.slice(0, 4).map(moduleShort).join("、")}${day.modules.length > 4 ? " ..." : ""}</td>
@@ -788,7 +882,7 @@ function renderNewcomers() {
   const aiMeta = state.analysis.aiMeta || {};
   const summary = [
     ["统计窗口", "近 7 天", `本区所有占比的分母都是近 7 天新增 owner：${fmtNumber(in7.length)} 人`],
-    ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} 首次出现的 owner`],
+    ["今日新增人员", fmtNumber(newcomers.today.length), `${state.snapshot.date} UTC 首次出现的 owner`],
     ["近 7 天新增人员", fmtNumber(in7.length), `近 7 天首次出现的 owner`],
     ["近7天 AI 画像覆盖", fmtPct(in7.length ? newcomers.withAi / in7.length : 0), aiMetaNote(aiMeta, in7.length)],
     ["近7天 GitHub 资料覆盖", fmtPct(in7.length ? newcomers.withProfile / in7.length : 0), `${fmtNumber(newcomers.withProfile)} / ${fmtNumber(in7.length)} 个新增 owner 可用`],
@@ -836,7 +930,7 @@ function renderNewcomerModuleMap(people) {
     const moduleHtml = recentModules.map((module) => {
       const repoUrl = safeWebUrl(module.repository);
       const repo = repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noreferrer">repo</a>` : module.repository ? `<span class="tag warn">repo 非链接</span>` : `<span class="tag risk">repo 未填</span>`;
-      return `<li><strong>${moduleShort(module.name)}</strong><span>${dayKey(module.created_at)} · ${categoryFor(module)} · ${repo}</span></li>`;
+      return `<li><strong>${moduleShort(module.name)}</strong><span>${fmtUtcDateTime(module.created_at)} · ${categoryFor(module)} · ${repo}</span></li>`;
     }).join("");
     return `
       <div class="owner-module-card">
@@ -1036,7 +1130,7 @@ function renderContributorCard(person, options = {}) {
             <div class="owner-title">
               ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
             </div>
-            <div class="subtle">${person.first} 至 ${person.last} · ${person.location}</div>
+            <div class="subtle">${person.first} UTC 至 ${person.last} UTC · ${person.location}</div>
           </div>
           <div class="pill-row compact-pills">
             <span class="tag ${priorityClass}">${person.portrait?.priority || "P2"}</span>
@@ -1047,7 +1141,7 @@ function renderContributorCard(person, options = {}) {
         <div class="compact-summary-row">
           <strong>${fmtNumber(person.count)}</strong><span>模块</span>
           <strong>${fmtNumber(person.recent7)}</strong><span>近7天</span>
-          <strong>${person.last}</strong><span>最近</span>
+          <strong>${person.last} UTC</strong><span>最近</span>
         </div>
 
         <div class="compact-line">
@@ -1087,7 +1181,7 @@ function renderContributorCard(person, options = {}) {
           <div class="owner-title">
             ${person.profile?.html_url ? `<a href="${person.profile.html_url}" target="_blank" rel="noreferrer">${person.owner}</a>` : person.owner}
           </div>
-          <div class="subtle">${person.first} 至 ${person.last}</div>
+          <div class="subtle">${person.first} UTC 至 ${person.last} UTC</div>
         </div>
         <div class="pill-row compact-pills">
           <span class="tag ${priorityClass}">${person.portrait?.priority || "P2"}</span>
@@ -1098,7 +1192,7 @@ function renderContributorCard(person, options = {}) {
       <div class="person-stats">
         <div><strong>${fmtNumber(person.count)}</strong><span>模块</span></div>
         <div><strong>${fmtNumber(person.recent7)}</strong><span>近7天</span></div>
-        <div><strong>${person.last}</strong><span>最近新增</span></div>
+        <div><strong>${person.last} UTC</strong><span>最近新增</span></div>
       </div>
 
       <div class="person-body">
