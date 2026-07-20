@@ -1521,13 +1521,18 @@ async function fetchSnapshot(force) {
   const isLocal = ["localhost", "127.0.0.1", ""].includes(window.location.hostname);
   if (isLocal) {
     try {
-      const response = await fetch(`api/analyze${force ? "?force=1" : ""}`);
+      const response = await fetch(`api/analyze${force ? "?force=1" : ""}`, {
+        cache: "no-store"
+      });
       if (response.ok) return response.json();
     } catch {
       // Fall back to static data.
     }
   }
-  const response = await fetch(`data/latest.json?ts=${force ? Date.now() : ""}`);
+  const response = await fetch(`data/latest.json?ts=${Date.now()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" }
+  });
   if (!response.ok) throw new Error(`静态数据读取失败：HTTP ${response.status}`);
   const snapshot = await response.json();
   return { ...snapshot, cached: true };
