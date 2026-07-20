@@ -21,7 +21,12 @@ function dayKey(dateLike) {
 }
 
 function daysBetween(a, b) {
-  return Math.max(0, Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000));
+  return Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000);
+}
+
+function isWithinUtcWindow(dateLike, snapshotDate, days = 7) {
+  const age = daysBetween(dayKey(dateLike), snapshotDate);
+  return age >= 0 && age < days;
 }
 
 function truncate(value, max = 280) {
@@ -29,7 +34,7 @@ function truncate(value, max = 280) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function deriveMetrics(modules, statistics, snapshotDate) {
+function deriveMetrics(modules, statistics, snapshotDate, ownerHistory) {
   const owners = new Map();
   const recent7Owners = new Set();
   const recent7Modules = [];
@@ -51,21 +56,30 @@ function deriveMetrics(modules, statistics, snapshotDate) {
     entry.module_count += 1;
     entry.first_seen = created < entry.first_seen ? created : entry.first_seen;
     entry.last_seen = created > entry.last_seen ? created : entry.last_seen;
-    if (daysBetween(created, snapshotDate) <= 7) {
+    if (isWithinUtcWindow(created, snapshotDate)) {
       entry.recent7_count += 1;
       recent7Owners.add(owner);
       recent7Modules.push(module);
     }
   }
 
-  const ownerRows = Array.from(owners.entries()).map(([owner, entry]) => ({ owner, ...entry }));
-  const recent7NewOwners = ownerRows.filter((entry) => daysBetween(entry.first_seen, snapshotDate) <= 7);
+  const ownerRows = Array.from(owners.entries()).map(([owner, entry]) => {
+    const history = ownerHistory[owner] || {};
+    return {
+      owner,
+      ...entry,
+      first_seen: dayKey(history.first_seen || entry.first_seen),
+      last_seen: dayKey(history.last_seen || entry.last_seen)
+    };
+  });
+  const invalidOwnerFirstSeen = ownerRows.filter((entry) => !/^\d{4}-\d{2}-\d{2}$/.test(entry.first_seen));
+  const recent7NewOwners = ownerRows.filter((entry) => isWithinUtcWindow(entry.first_seen, snapshotDate));
   const todayNewOwners = recent7NewOwners.filter((entry) => entry.first_seen === snapshotDate);
   const recent7NewOwnerSet = new Set(recent7NewOwners.map((entry) => entry.owner));
   const recent7NewOwnerModules = recent7Modules.filter((module) => recent7NewOwnerSet.has(ownerOf(module.name)));
 
   return {
-    algorithm_version: "2026-07-20.1",
+    algorithm_version: "2026-07-20.2-owner-history",
     snapshot_date: snapshotDate,
     module_array_count: modules.length,
     statistics_total_modules: Number(statistics?.total_modules || 0),
@@ -77,12 +91,14 @@ function deriveMetrics(modules, statistics, snapshotDate) {
     today_new_owner_count: todayNewOwners.length,
     recent7_module_count: recent7Modules.length,
     recent7_new_owner_module_count: recent7NewOwnerModules.length,
+    owner_history_count: Object.keys(ownerHistory).length,
+    invalid_owner_first_seen_count: invalidOwnerFirstSeen.length,
     invalid_created_at_count: invalidCreatedAt.length,
     invalid_created_at_examples: invalidCreatedAt.slice(0, 10)
   };
 }
 
-function buildDataQuality({ modules, statistics, owners, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+function buildDataQuality({ modules, statistics, owners, ownerHistory, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
   const checks = [
     {
       id: "modules_count_matches_statistics",
@@ -107,6 +123,22 @@ function buildDataQuality({ modules, statistics, owners, githubProfiles, githubF
       expected: 0,
       actual: derivedMetrics.invalid_created_at_count,
       passed: derivedMetrics.invalid_created_at_count === 0
+    },
+    {
+      id: "owner_history_complete",
+      label: "完整版本历史覆盖全部 owner",
+      severity: "error",
+      expected: owners.length,
+      actual: Object.keys(ownerHistory).length,
+      passed: owners.length === Object.keys(ownerHistory).length
+    },
+    {
+      id: "owner_first_seen_parseable",
+      label: "owner 首次贡献时间可解析为 UTC 日期",
+      severity: "error",
+      expected: 0,
+      actual: derivedMetrics.invalid_owner_first_seen_count,
+      passed: derivedMetrics.invalid_owner_first_seen_count === 0
     },
     {
       id: "github_api_no_failures",
@@ -167,7 +199,7 @@ async function mapLimit(items, limit, worker) {
   return results;
 }
 
-function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
+function buildAiPortraitTargets(modules, githubProfiles, snapshotDate, ownerHistory) {
   const byOwner = new Map();
   for (const module of modules) {
     const owner = ownerOf(module.name);
@@ -186,7 +218,7 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
     entry.module_count += 1;
     entry.first_seen = created < entry.first_seen ? created : entry.first_seen;
     entry.last_seen = created > entry.last_seen ? created : entry.last_seen;
-    if (daysBetween(created, snapshotDate) <= AI_ANALYSIS_DAYS) entry.recent_count += 1;
+    if (isWithinUtcWindow(created, snapshotDate, AI_ANALYSIS_DAYS)) entry.recent_count += 1;
     entry.modules.push({
       name: module.name || "",
       version: module.version || "",
@@ -199,8 +231,16 @@ function buildAiPortraitTargets(modules, githubProfiles, snapshotDate) {
   }
 
   return Array.from(byOwner.values())
+    .map((entry) => {
+      const history = ownerHistory[entry.owner] || {};
+      return {
+        ...entry,
+        first_seen: dayKey(history.first_seen || entry.first_seen),
+        last_seen: dayKey(history.last_seen || entry.last_seen)
+      };
+    })
     .filter((entry) => {
-      if (AI_TARGET_SCOPE === "newcomers") return daysBetween(entry.first_seen, snapshotDate) <= AI_ANALYSIS_DAYS;
+      if (AI_TARGET_SCOPE === "newcomers") return isWithinUtcWindow(entry.first_seen, snapshotDate, AI_ANALYSIS_DAYS);
       return entry.recent_count > 0;
     })
     .sort((a, b) => b.recent_count - a.recent_count || b.last_seen.localeCompare(a.last_seen) || b.module_count - a.module_count || a.owner.localeCompare(b.owner))
@@ -332,7 +372,7 @@ async function fetchAiPortrait(target) {
   };
 }
 
-async function buildAiPortraits(modules, githubProfiles, snapshotDate) {
+async function buildAiPortraits(modules, githubProfiles, snapshotDate, ownerHistory) {
   if (!RUN_AI_PORTRAITS || !OPENAI_API_KEY || AI_PORTRAIT_LIMIT <= 0) {
     return {
       portraits: {},
@@ -349,7 +389,7 @@ async function buildAiPortraits(modules, githubProfiles, snapshotDate) {
     };
   }
 
-  const targets = buildAiPortraitTargets(modules, githubProfiles, snapshotDate);
+  const targets = buildAiPortraitTargets(modules, githubProfiles, snapshotDate, ownerHistory);
   let failed = 0;
   const portraits = {};
   await mapLimit(targets, AI_CONCURRENCY, async (target) => {
@@ -387,6 +427,7 @@ async function main() {
   const modules = exportSnapshot.modules || [];
   const statistics = exportSnapshot.statistics || {};
   const githubProfiles = exportSnapshot.github_profiles || {};
+  const ownerHistory = exportSnapshot.owner_history || {};
 
   const ownerCounts = new Map();
   for (const module of modules) {
@@ -399,12 +440,13 @@ async function main() {
 
   const failed = 0;
   const notFound = Object.values(githubProfiles).filter((profile) => profile?.exists === false).length;
-  const ai = await buildAiPortraits(modules, githubProfiles, snapshotDate);
-  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate);
+  const ai = await buildAiPortraits(modules, githubProfiles, snapshotDate, ownerHistory);
+  const derivedMetrics = deriveMetrics(modules, statistics, snapshotDate, ownerHistory);
   const dataQuality = buildDataQuality({
     modules,
     statistics,
     owners,
+    ownerHistory,
     githubProfiles,
     githubFailed: failed,
     githubNotFound: notFound,
@@ -425,6 +467,7 @@ async function main() {
       ai_portraits: OPENAI_API_KEY ? "https://api.openai.com/v1/responses" : null
     },
     modules,
+    owner_history: ownerHistory,
     statistics,
     derived_metrics: derivedMetrics,
     data_quality: dataQuality,

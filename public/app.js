@@ -61,7 +61,12 @@ function fmtUtcDateTime(dateLike) {
 }
 
 function daysBetween(a, b) {
-  return Math.max(0, Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000));
+  return Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000);
+}
+
+function isWithinUtcWindow(dateLike, snapshotDate, days = ANALYSIS_DAYS) {
+  const age = daysBetween(dayKey(dateLike), snapshotDate);
+  return age >= 0 && age < days;
 }
 
 function ownerOf(moduleName) {
@@ -169,7 +174,7 @@ function inferIdentity(profile, person) {
 }
 
 function inferSource(person, profile, snapshotDate) {
-  const recentModules = person.modules.filter((module) => daysBetween(dayKey(module.created_at), snapshotDate) <= ANALYSIS_DAYS);
+  const recentModules = person.modules.filter((module) => isWithinUtcWindow(module.created_at, snapshotDate));
   const repositories = recentModules.map((module) => String(module.repository || "")).filter(Boolean);
   const company = cleanCompany(profile?.company);
   const profileText = `${profile?.type || ""} ${profile?.name || ""} ${company} ${profile?.bio || ""}`.toLowerCase();
@@ -324,6 +329,7 @@ function analyze(snapshot) {
   const modules = snapshot.modules || [];
   const stats = snapshot.statistics || {};
   const githubProfiles = snapshot.github_profiles || {};
+  const ownerHistory = snapshot.owner_history || {};
   const aiPortraits = snapshot.ai_portraits || {};
   const aiMeta = snapshot.ai_meta || { enabled: false };
   const rawGithubMeta = snapshot.github_meta || {};
@@ -369,7 +375,7 @@ function analyze(snapshot) {
     person.last = !person.last || created > person.last ? created : person.last;
 
     const ageFromSnapshot = daysBetween(created, snapshot.date);
-    if (ageFromSnapshot <= 7) person.recent7 += 1;
+    if (ageFromSnapshot >= 0 && ageFromSnapshot < ANALYSIS_DAYS) person.recent7 += 1;
 
     for (const keyword of module.keywords || []) {
       const key = String(keyword).toLowerCase();
@@ -402,6 +408,15 @@ function analyze(snapshot) {
   }
 
   const contributors = Array.from(owners.values()).map((person) => {
+    const history = ownerHistory[person.owner] || {};
+    if (history.first_seen) {
+      person.first = dayKey(history.first_seen);
+      person.firstSeenAt = history.first_seen;
+    }
+    if (history.last_seen) {
+      person.last = dayKey(history.last_seen);
+      person.lastSeenAt = history.last_seen;
+    }
     const topCategories = topEntries(person.categories, 3);
     const topKeywords = topEntries(person.keywords, 5);
     const rawProfile = githubProfiles[person.owner] || null;
@@ -486,14 +501,14 @@ function analyze(snapshot) {
     .map((day) => ({ ...day, ownerCount: day.owners.size }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const recent7 = dailyRows.filter((day) => daysBetween(day.date, snapshot.date) <= 7);
+  const recent7 = dailyRows.filter((day) => isWithinUtcWindow(day.date, snapshot.date));
   const previous7 = dailyRows.filter((day) => {
     const age = daysBetween(day.date, snapshot.date);
-    return age > 7 && age <= 14;
+    return age >= ANALYSIS_DAYS && age < ANALYSIS_DAYS * 2;
   });
   const recent7Count = recent7.reduce((sum, day) => sum + day.count, 0);
   const previous7Count = previous7.reduce((sum, day) => sum + day.count, 0);
-  const active7Owners = new Set(modules.filter((m) => daysBetween(dayKey(m.created_at), snapshot.date) <= ANALYSIS_DAYS).map((m) => ownerOf(m.name))).size;
+  const active7Owners = new Set(modules.filter((module) => isWithinUtcWindow(module.created_at, snapshot.date)).map((module) => ownerOf(module.name))).size;
   const singleOwners = contributors.filter((person) => person.count === 1).length;
   const top10Count = contributors.slice(0, 10).reduce((sum, person) => sum + person.count, 0);
   const top20Count = contributors.slice(0, 20).reduce((sum, person) => sum + person.count, 0);
@@ -540,7 +555,7 @@ function analyze(snapshot) {
 
 function buildNewcomerAnalysis(contributors, snapshotDate) {
   const in7 = contributors
-    .filter((person) => daysBetween(person.first, snapshotDate) <= ANALYSIS_DAYS)
+    .filter((person) => isWithinUtcWindow(person.first, snapshotDate))
     .sort((a, b) => b.first.localeCompare(a.first) || b.count - a.count || a.owner.localeCompare(b.owner));
   const today = in7.filter((person) => person.first === snapshotDate);
   const locations = {};
@@ -589,7 +604,7 @@ function buildNewcomerAnalysis(contributors, snapshotDate) {
 }
 
 function buildIssues(context) {
-  const recentModules = context.modules.filter((module) => daysBetween(dayKey(module.created_at), context.snapshot.date) <= ANALYSIS_DAYS);
+  const recentModules = context.modules.filter((module) => isWithinUtcWindow(module.created_at, context.snapshot.date));
   const recentContributors = context.contributors.filter((person) => person.recent7 > 0);
   const total = recentModules.length || 1;
   const ownerTotal = recentContributors.length || 1;
@@ -712,7 +727,7 @@ function renderSummary() {
 
 function recentNewUserModules(person) {
   return person.modules
-    .filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS)
+    .filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date))
     .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at) || String(left.name).localeCompare(String(right.name)));
 }
 
@@ -751,9 +766,6 @@ function renderNewUserContributions() {
   }
 
   els.newUserContributionRows.innerHTML = visibleRows.map(({ person, modules }) => {
-    const firstModule = person.modules
-      .slice()
-      .sort((left, right) => Date.parse(left.created_at) - Date.parse(right.created_at))[0];
     const contributionDownloads = modules.reduce((sum, module) => sum + Number(module.downloads || 0), 0);
     const moduleHtml = modules.slice(0, 8).map((module) => {
       const repoUrl = safeWebUrl(module.repository);
@@ -776,7 +788,7 @@ function renderNewUserContributions() {
         <div class="new-user-identity">
           <span class="new-user-kicker">NEW CONTRIBUTOR</span>
           <strong>${owner}</strong>
-          <span>首次贡献 ${fmtUtcDateTime(firstModule?.created_at)}</span>
+          <span>首次贡献 ${fmtUtcDateTime(person.firstSeenAt || person.first)}</span>
           <div class="pill-row">
             <span class="tag">${person.location}</span>
             <span class="tag">${person.topCategories[0]?.[0] || "通用/实验"}</span>
@@ -797,7 +809,7 @@ function selectedDailyRows() {
   const rows = state.analysis.dailyRows;
   if (state.range === "all") return rows;
   const limit = Number(state.range);
-  return rows.filter((day) => daysBetween(day.date, state.snapshot.date) <= limit);
+  return rows.filter((day) => isWithinUtcWindow(day.date, state.snapshot.date, limit));
 }
 
 function renderDaily() {
@@ -1057,7 +1069,7 @@ function renderNewcomers() {
 function renderNewcomerModuleMap(people) {
   if (!els.newcomerModuleMap) return;
   if (els.newcomerMapNote) {
-    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS).length, 0);
+    const moduleCount = people.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date)).length, 0);
     els.newcomerMapNote.textContent = `${fmtNumber(people.length)} 个新增 owner，对应 ${fmtNumber(moduleCount)} 个近 7 天新增模块`;
   }
   if (!people.length) {
@@ -1066,7 +1078,7 @@ function renderNewcomerModuleMap(people) {
   }
   els.newcomerModuleMap.innerHTML = people.map((person) => {
     const recentModules = person.modules
-      .filter((module) => daysBetween(dayKey(module.created_at), state.snapshot.date) <= ANALYSIS_DAYS)
+      .filter((module) => isWithinUtcWindow(module.created_at, state.snapshot.date))
       .sort((a, b) => dayKey(b.created_at).localeCompare(dayKey(a.created_at)) || String(a.name).localeCompare(String(b.name)));
     const moduleHtml = recentModules.map((module) => {
       const repoUrl = safeWebUrl(module.repository);
@@ -1098,7 +1110,7 @@ function renderDataReconciliation() {
   const derived = s.derived_metrics || {};
   const quality = s.data_quality || {};
   const active7 = a.contributors.filter((person) => person.recent7 > 0);
-  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => daysBetween(dayKey(module.created_at), s.date) <= ANALYSIS_DAYS).length, 0);
+  const newcomerModuleCount = a.newcomers.in7.reduce((sum, person) => sum + person.modules.filter((module) => isWithinUtcWindow(module.created_at, s.date)).length, 0);
   const cards = [
     ["数据校验", quality.status === "pass" ? "通过" : quality.status === "warn" ? "有警告" : quality.status === "fail" ? "失败" : "未记录", quality.status === "pass" ? "模块数、owner 去重、日期解析等硬校验已通过。" : "查看下方校验项，警告不会改写事实计数。"],
     ["大盘模块数", fmtNumber(derived.statistics_total_modules || a.stats.total_modules || a.modules.length), `导出站点当前拼出 ${fmtNumber(derived.module_array_count || a.modules.length)} 条最新模块；必须等于 statistics.total_modules。`],
@@ -1144,7 +1156,7 @@ function renderTiers() {
 function renderCategories() {
   const categories = {};
   for (const module of state.analysis.modules) {
-    if (daysBetween(dayKey(module.created_at), state.snapshot.date) > ANALYSIS_DAYS) continue;
+    if (!isWithinUtcWindow(module.created_at, state.snapshot.date)) continue;
     const category = categoryFor(module);
     categories[category] = (categories[category] || 0) + 1;
   }
