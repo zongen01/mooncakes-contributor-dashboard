@@ -32,6 +32,8 @@ if git diff --quiet -- public/data/latest.json; then
   exit 0
 fi
 
+git config user.name "zongen01"
+git config user.email "zongen01@users.noreply.github.com"
 git add -- public/data/latest.json
 git commit -m "Update dashboard data $(date '+%Y-%m-%d')"
 git push origin HEAD:main
