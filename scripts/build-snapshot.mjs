@@ -118,8 +118,28 @@ function deriveMetrics(modules, statistics, snapshotDate, ownerHistory, moduleHi
   };
 }
 
-function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHistory, publicationWindows, registrationWindow, registeredNonContributors, sourceIntegrity, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
+function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHistory, publicationWindows, registrationWindow, weeklyRegistrationHistory, registeredNonContributors, sourceIntegrity, githubProfiles, githubFailed, githubNotFound, ai, derivedMetrics }) {
   const registeredContributorOverlap = registeredNonContributors.filter((user) => ownerHistory[user.username]).length;
+  const registrationWeeks = Array.isArray(weeklyRegistrationHistory?.weeks)
+    ? weeklyRegistrationHistory.weeks
+    : [];
+  const registrationHistoryTotalsValid = registrationWeeks.every((week) =>
+    Number(week.registered_count) === Number(week.enabled_registered_count) + Number(week.disabled_registered_count) &&
+    Number(week.enabled_registered_count) === Number(week.contributed_count) + Number(week.no_contribution_count)
+  );
+  const registrationHistoryBoundariesValid = registrationWeeks.every((week, index) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(week.from || "") &&
+    /^\d{4}-\d{2}-\d{2}$/.test(week.to || "") &&
+    daysBetween(week.from, week.to) === 6 &&
+    (!index || daysBetween(registrationWeeks[index - 1].from, week.from) === 7)
+  );
+  const previousRegistrationWeek = registrationWeeks.find((week) =>
+    week.from === registrationWindow.from && week.to === registrationWindow.to
+  );
+  const registrationHistoryMatchesWindow = Boolean(previousRegistrationWeek) &&
+    ["registered_count", "enabled_registered_count", "disabled_registered_count", "contributed_count", "no_contribution_count"].every((field) =>
+      Number(previousRegistrationWeek[field]) === Number(registrationWindow[field])
+    );
   const checks = [
     {
       id: "modules_count_matches_statistics",
@@ -176,6 +196,22 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHis
       expected: Number(registrationWindow.no_contribution_count ?? 0),
       actual: registeredNonContributors.length,
       passed: registeredNonContributors.length === Number(registrationWindow.no_contribution_count ?? 0)
+    },
+    {
+      id: "weekly_registration_history_reconciles",
+      label: "每周注册历史人数可对账且 UTC 周连续",
+      severity: "error",
+      expected: "valid contiguous weeks",
+      actual: `${registrationWeeks.length} weeks`,
+      passed: registrationWeeks.length > 0 && registrationHistoryTotalsValid && registrationHistoryBoundariesValid
+    },
+    {
+      id: "weekly_registration_history_matches_previous_week",
+      label: "每周注册历史与上周注册窗口一致",
+      severity: "error",
+      expected: "matching previous UTC week",
+      actual: previousRegistrationWeek ? `${previousRegistrationWeek.from} to ${previousRegistrationWeek.to}` : "missing",
+      passed: registrationHistoryMatchesWindow
     },
     {
       id: "registration_cohort_has_no_contributors",
@@ -604,6 +640,7 @@ async function main() {
   const ownerHistory = exportSnapshot.owner_history || {};
   const publicationWindows = exportSnapshot.publication_windows || {};
   const registrationWindow = exportSnapshot.registration_window || {};
+  const weeklyRegistrationHistory = exportSnapshot.weekly_registration_history || {};
   const registeredNonContributors = exportSnapshot.registered_non_contributors || [];
   const sourceIntegrity = exportSnapshot.source_integrity || {};
 
@@ -628,6 +665,7 @@ async function main() {
     moduleHistory,
     publicationWindows,
     registrationWindow,
+    weeklyRegistrationHistory,
     registeredNonContributors,
     sourceIntegrity,
     githubProfiles,
@@ -654,6 +692,7 @@ async function main() {
     owner_history: ownerHistory,
     publication_windows: publicationWindows,
     registration_window: registrationWindow,
+    weekly_registration_history: weeklyRegistrationHistory,
     registered_non_contributors: registeredNonContributors,
     source_integrity: sourceIntegrity,
     statistics,

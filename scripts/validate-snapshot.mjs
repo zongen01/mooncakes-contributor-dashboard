@@ -11,6 +11,7 @@ const statistics = snapshot.statistics || {};
 const derived = snapshot.derived_metrics || {};
 const windows = snapshot.publication_windows || {};
 const registrationWindow = snapshot.registration_window || {};
+const weeklyRegistrationHistory = snapshot.weekly_registration_history || {};
 const registeredNonContributors = snapshot.registered_non_contributors || [];
 const sourceIntegrity = snapshot.source_integrity || {};
 
@@ -38,10 +39,14 @@ function utcDateOffset(date, offset) {
 }
 
 function previousUtcCalendarWeek(snapshotDate) {
-  const current = new Date(`${snapshotDate}T00:00:00Z`);
-  const weekday = current.getUTCDay() || 7;
-  const thisMonday = utcDateOffset(snapshotDate, -(weekday - 1));
+  const thisMonday = startOfUtcCalendarWeek(snapshotDate);
   return { from: utcDateOffset(thisMonday, -7), to: utcDateOffset(thisMonday, -1) };
+}
+
+function startOfUtcCalendarWeek(dateKey) {
+  const current = new Date(`${dateKey}T00:00:00Z`);
+  const weekday = current.getUTCDay() || 7;
+  return utcDateOffset(dateKey, -(weekday - 1));
 }
 
 function assert(condition, message) {
@@ -145,6 +150,37 @@ for (const user of registeredNonContributors) {
   assert(!user.github_url || user.github_url === `https://github.com/${encodeURIComponent(user.github_login)}`, `GitHub mapping mismatch: ${user.username}`);
 }
 
+const registrationWeeks = Array.isArray(weeklyRegistrationHistory.weeks)
+  ? weeklyRegistrationHistory.weeks
+  : [];
+assert(weeklyRegistrationHistory.source_timezone === "Asia/Shanghai", `unexpected registration history source timezone: ${weeklyRegistrationHistory.source_timezone}`);
+assert(weeklyRegistrationHistory.display_timezone === "UTC", `unexpected registration history display timezone: ${weeklyRegistrationHistory.display_timezone}`);
+assert(weeklyRegistrationHistory.cohort_status === "contributed_by_snapshot", `unexpected registration cohort status: ${weeklyRegistrationHistory.cohort_status}`);
+assert(registrationWeeks.length > 0, "weekly registration history is empty");
+for (let index = 0; index < registrationWeeks.length; index += 1) {
+  const week = registrationWeeks[index];
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(week.from || ""), `invalid registration week start: ${week.from}`);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(week.to || ""), `invalid registration week end: ${week.to}`);
+  assert(new Date(`${week.from}T00:00:00Z`).getUTCDay() === 1, `registration week does not start Monday: ${week.from}`);
+  assert(week.to === utcDateOffset(week.from, 6), `registration week boundary mismatch: ${week.from}`);
+  if (index) {
+    assert(week.from === utcDateOffset(registrationWeeks[index - 1].from, 7), `registration weeks are not contiguous at ${week.from}`);
+  }
+  for (const field of ["registered_count", "enabled_registered_count", "disabled_registered_count", "contributed_count", "no_contribution_count"]) {
+    assert(Number.isInteger(Number(week[field])) && Number(week[field]) >= 0, `invalid ${field} for ${week.from}`);
+  }
+  assert(Number(week.registered_count) === Number(week.enabled_registered_count) + Number(week.disabled_registered_count), `registration totals do not reconcile for ${week.from}`);
+  assert(Number(week.enabled_registered_count) === Number(week.contributed_count) + Number(week.no_contribution_count), `registration contribution totals do not reconcile for ${week.from}`);
+}
+assert(registrationWeeks.at(-1).from === startOfUtcCalendarWeek(snapshot.date), "registration history does not include current UTC week");
+const previousRegistrationWeek = registrationWeeks.find((week) =>
+  week.from === registrationWindow.from && week.to === registrationWindow.to
+);
+assert(previousRegistrationWeek, "registration history is missing the previous complete UTC week");
+for (const field of ["registered_count", "enabled_registered_count", "disabled_registered_count", "contributed_count", "no_contribution_count"]) {
+  assert(Number(previousRegistrationWeek[field]) === Number(registrationWindow[field]), `registration history ${field} differs from previous-week window`);
+}
+
 const ownerRollup = new Map();
 for (const module of modules) {
   const history = moduleHistory[module.name];
@@ -223,5 +259,6 @@ console.log(JSON.stringify({
   recent7: windows.recent7,
   previous7: windows.previous7,
   registration: registrationWindow,
+  registration_weeks: registrationWeeks.length,
   quality: snapshot.data_quality.status
 }));
