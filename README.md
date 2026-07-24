@@ -8,7 +8,6 @@
 - 源站出现临时网络错误或 `5xx` 时会有限退避重试；持续失败时保留上一份已验证快照，不发布残缺数据。
 - GitHub Actions 负责部署已提交快照；公开 runner 无法访问内网源站时不会伪装成已刷新数据。
 - 页面由 GitHub Pages 静态托管。
-- 默认数据源：`http://192.168.86.2:18080/`。
 - 基础数据只读取导出站点的 `users.csv`、`packages.csv`、`module-download-totals.csv`。
 - “新增模块”只按模块最早非撤回发布时间计算；“活跃模块”按近 7 天内是否有版本发布计算；“版本发布”按完整 `packages.csv` 记录数计算。7 天窗口严格包含快照日及此前 6 个 UTC 日期。
 - `users.csv.signup_time` 是 `Asia/Shanghai` 的无时区源字段，构建时先转换为 UTC；公开快照只保留注册日期，不保留原始精确时间。
@@ -26,7 +25,7 @@ npm start
 
 可选环境变量：
 
-- `MOONCAKES_EXPORTS_BASE_URL`：business-analytics 导出站点地址，默认 `http://192.168.86.2:18080`。
+- `MOONCAKES_EXPORTS_BASE_URL`：business-analytics 导出站点地址，必须通过本机私有环境配置提供，不写入仓库或公开快照。
 - `BUSINESS_ANALYTICS_EXPORTS_BASE_URL`：同上，作为兼容别名。
 - `OPENAI_API_KEY`：启用 AI 新增贡献者画像。
 - `OPENAI_MODEL`：AI 模型，默认 `gpt-4.1-mini`。

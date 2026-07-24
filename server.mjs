@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { SNAPSHOT_ALGORITHM_VERSION, exportsBaseUrl, todayInUtc } from "./lib/mooncakes-exports.mjs";
+import { SNAPSHOT_ALGORITHM_VERSION, todayInUtc } from "./lib/mooncakes-exports.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -25,7 +25,7 @@ const mimeTypes = {
 };
 
 function isCurrentExportSnapshot(snapshot, date) {
-  return snapshot?.source?.exports_base_url === exportsBaseUrl()
+  return snapshot?.source?.provider === "business-analytics-exports"
     && snapshot?.date === date
     && snapshot?.timezone === "UTC"
     && snapshot?.derived_metrics?.algorithm_version === SNAPSHOT_ALGORITHM_VERSION
@@ -136,7 +136,6 @@ createServer(async (req, res) => {
   }
 }).listen(port, () => {
   console.log(`Mooncakes contributor dashboard: http://localhost:${port}`);
-  console.log(`Data source: ${exportsBaseUrl()}`);
   makeSnapshot(false).catch((error) => {
     console.error("Initial daily snapshot failed:", error.message || error);
   });

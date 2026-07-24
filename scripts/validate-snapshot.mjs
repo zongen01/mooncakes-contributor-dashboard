@@ -62,8 +62,7 @@ function findSensitiveKeys(value, path = [], matches = []) {
   for (const [key, child] of Object.entries(value)) {
     const nextPath = [...path, key];
     const normalizedKey = key.toLowerCase();
-    const isSensitive = normalizedKey !== "email_public"
-      && /(?:^|_)(?:password|passwd|secret|access_token|refresh_token|oauth_token|github_token|token|email|phone|mobile)(?:_|$)/i.test(normalizedKey);
+    const isSensitive = /(?:^|_)(?:password|passwd|secret|access_token|refresh_token|oauth_token|github_token|token|email|phone|mobile)(?:_|$)/i.test(normalizedKey);
     const isRawPrivateExportField = /^(?:user_id|gh_id|signup_time|meta_json|authors)$/i.test(key);
     if (isSensitive || isRawPrivateExportField) {
       matches.push(nextPath.join("."));
@@ -85,6 +84,29 @@ function findSecretLikeValues(value, path = [], matches = []) {
   return matches;
 }
 
+function isPrivateNetworkHostname(hostname) {
+  const normalized = String(hostname || "").replace(/^\[|\]$/g, "").toLowerCase();
+  if (normalized === "localhost" || normalized === "::1") return true;
+  if (/^(?:127|10)\./.test(normalized) || /^192\.168\./.test(normalized)) return true;
+  const private172 = normalized.match(/^172\.(\d{1,3})\./);
+  if (private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31) return true;
+  return /^(?:fc|fd|fe8|fe9|fea|feb)/.test(normalized);
+}
+
+function findPrivateNetworkUrls(value, path = [], matches = []) {
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) {
+    try {
+      if (isPrivateNetworkHostname(new URL(value).hostname)) matches.push(path.join("."));
+    } catch {
+      // Invalid public URLs are handled by their field-specific checks.
+    }
+    return matches;
+  }
+  if (!value || typeof value !== "object") return matches;
+  for (const [key, child] of Object.entries(value)) findPrivateNetworkUrls(child, [...path, key], matches);
+  return matches;
+}
+
 assert(snapshot.timezone === "UTC", `timezone must be UTC, got ${snapshot.timezone}`);
 assert(/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date || ""), `invalid snapshot date: ${snapshot.date}`);
 assert(Number.isFinite(Date.parse(snapshot.captured_at)), `invalid captured_at: ${snapshot.captured_at}`);
@@ -95,6 +117,8 @@ const sensitiveKeys = findSensitiveKeys(snapshot);
 assert(sensitiveKeys.length === 0, `sensitive fields found in public snapshot: ${sensitiveKeys.slice(0, 5).join(", ")}`);
 const secretLikeValues = findSecretLikeValues(snapshot);
 assert(secretLikeValues.length === 0, `secret-like values found in public snapshot: ${secretLikeValues.slice(0, 5).join(", ")}`);
+const privateNetworkUrls = findPrivateNetworkUrls(snapshot);
+assert(privateNetworkUrls.length === 0, `private network URLs found in public snapshot: ${privateNetworkUrls.slice(0, 5).join(", ")}`);
 assert(modules.length === Number(statistics.total_modules), `module count mismatch: ${modules.length} != ${statistics.total_modules}`);
 assert(new Set(modules.map((module) => module.name)).size === modules.length, "module list contains duplicate names");
 assert(Object.keys(moduleHistory).length === modules.length, "module history does not cover every module");
