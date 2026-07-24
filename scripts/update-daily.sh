@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 if [[ -z "${MOONCAKES_EXPORTS_BASE_URL:-}" && -z "${BUSINESS_ANALYTICS_EXPORTS_BASE_URL:-}" ]]; then
   echo "MOONCAKES_EXPORTS_BASE_URL is required" >&2
