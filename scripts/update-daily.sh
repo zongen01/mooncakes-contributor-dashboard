@@ -21,5 +21,6 @@ cd "$repo_dir"
 npm run build:data
 npm run validate:data
 node scripts/publish-snapshot.mjs
+node scripts/verify-published-snapshot.mjs
 
 echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Mooncakes dashboard update published"
