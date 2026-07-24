@@ -9,36 +9,17 @@ if [[ -z "${MOONCAKES_EXPORTS_BASE_URL:-}" && -z "${BUSINESS_ANALYTICS_EXPORTS_B
   exit 1
 fi
 
-repo_dir="${MOONCAKES_DASHBOARD_REPO_DIR:-/Users/zongen/Documents/New project/mooncakes-contributor-dashboard}"
-temp_root="$(mktemp -d /tmp/mooncakes-dashboard-update.XXXXXX)"
-worktree_dir="$temp_root/repo"
-
-cleanup() {
-  if [[ -e "$worktree_dir/.git" ]]; then
-    git -C "$repo_dir" worktree remove --force "$worktree_dir" >/dev/null 2>&1 || true
-  fi
-  rm -rf -- "$temp_root"
-}
-trap cleanup EXIT
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "GH_TOKEN is required" >&2
+  exit 1
+fi
 
 echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Starting Mooncakes dashboard update"
 
-git -C "$repo_dir" fetch origin main
-git -C "$repo_dir" worktree add --detach "$worktree_dir" origin/main
-
-cd "$worktree_dir"
+repo_dir="${MOONCAKES_DASHBOARD_REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$repo_dir"
 npm run build:data
 npm run validate:data
-
-if git diff --quiet -- public/data/latest.json; then
-  echo "No data changes to publish"
-  exit 0
-fi
-
-git config user.name "zongen01"
-git config user.email "zongen01@users.noreply.github.com"
-git add -- public/data/latest.json
-git commit -m "Update dashboard data $(date -u '+%Y-%m-%d')"
-git push origin HEAD:main
+node scripts/publish-snapshot.mjs
 
 echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] Mooncakes dashboard update published"

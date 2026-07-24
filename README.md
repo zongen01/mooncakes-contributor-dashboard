@@ -4,7 +4,7 @@
 
 时间口径统一为 UTC：快照日期、模块贡献时间和页面更新时间都按 UTC 展示。页面包含独立的“新用户贡献”板块，以 owner 在完整非撤回版本历史中的最早发布时间作为新用户口径；另列上一完整 UTC 自然周已注册但没有非撤回包记录的待转化用户。
 
-- 每天由本机 LaunchAgent 在 `16:00 UTC`（北京时间次日 `00:00`）读取内网源站、校验并提交最新快照。
+- 每天由本机 LaunchAgent 在 `16:00 UTC`（北京时间次日 `00:00`）读取内网源站、校验并通过 GitHub API 提交最新快照。
 - 源站出现临时网络错误或 `5xx` 时会有限退避重试；持续失败时保留上一份已验证快照，不发布残缺数据。
 - GitHub Actions 负责部署已提交快照；公开 runner 无法访问内网源站时不会伪装成已刷新数据。
 - 页面由 GitHub Pages 静态托管。
@@ -27,6 +27,7 @@ npm start
 
 - `MOONCAKES_EXPORTS_BASE_URL`：business-analytics 导出站点地址，必须通过本机私有环境配置提供，不写入仓库或公开快照。
 - `BUSINESS_ANALYTICS_EXPORTS_BASE_URL`：同上，作为兼容别名。
+- `GH_TOKEN`：发布快照所需的 GitHub 令牌，由本机凭据管理器在任务运行时提供，不写入脚本。
 - `OPENAI_API_KEY`：启用 AI 新增贡献者画像。
 - `OPENAI_MODEL`：AI 模型，默认 `gpt-4.1-mini`。
 - `AI_PORTRAIT_LIMIT`：每天最多分析多少个目标 owner，默认 `80`。
