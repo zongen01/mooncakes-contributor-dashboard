@@ -64,7 +64,9 @@ function findSensitiveKeys(value, path = [], matches = []) {
     const normalizedKey = key.toLowerCase();
     const isSensitive = /(?:^|_)(?:password|passwd|secret|access_token|refresh_token|oauth_token|github_token|token|email|phone|mobile)(?:_|$)/i.test(normalizedKey);
     const isRawPrivateExportField = /^(?:user_id|gh_id|signup_time|meta_json|authors)$/i.test(key);
-    if (isSensitive || isRawPrivateExportField) {
+    const isModuleIdentifier = path.length === 1 && path[0] === "module_history" &&
+      /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(key);
+    if ((isSensitive && !isModuleIdentifier) || isRawPrivateExportField) {
       matches.push(nextPath.join("."));
     }
     findSensitiveKeys(child, nextPath, matches);
@@ -122,13 +124,18 @@ assert(privateNetworkUrls.length === 0, `private network URLs found in public sn
 assert(modules.length === Number(statistics.total_modules), `module count mismatch: ${modules.length} != ${statistics.total_modules}`);
 assert(new Set(modules.map((module) => module.name)).size === modules.length, "module list contains duplicate names");
 assert(Object.keys(moduleHistory).length === modules.length, "module history does not cover every module");
+assert(modules.every((module) => Object.hasOwn(moduleHistory, module.name)), "module history contains unmatched names");
 
 const ownerNames = new Set(modules.map((module) => ownerOf(module.name)));
 assert(Object.keys(ownerHistory).length === ownerNames.size, "owner history does not cover every owner");
 assert(Number(statistics.total_uploaders) === ownerNames.size, "total_uploaders does not match unique owners");
 assert(sum(modules, (module) => module.package_count) === Number(statistics.total_packages), "total_packages does not match current package_count sum");
 assert(sum(modules, (module) => module.line_count) === Number(statistics.total_lines), "total_lines does not match current line_count sum");
-assert(sum(modules, (module) => module.downloads) === Number(statistics.total_downloads), "total_downloads does not match module download sum");
+const historicalDownloadCount = Number(sourceIntegrity.orphan_download_module_count ?? 0);
+const historicalDownloads = Number(sourceIntegrity.orphan_download_total ?? 0);
+assert(Number.isSafeInteger(historicalDownloadCount) && historicalDownloadCount >= 0, "invalid historical download counter count");
+assert(Number.isSafeInteger(historicalDownloads) && historicalDownloads >= 0 && (historicalDownloadCount > 0 || historicalDownloads === 0), "invalid historical download total");
+assert(sum(modules, (module) => module.downloads) + historicalDownloads === Number(statistics.total_downloads), "total_downloads does not reconcile with active module and historical downloads");
 assert(sum(Object.values(moduleHistory), (entry) => entry.version_count) === Number(statistics.total_versions), "module version history does not match total_versions");
 assert(sum(Object.values(ownerHistory), (entry) => entry.version_count) === Number(statistics.total_versions), "owner version history does not match total_versions");
 assert(Number(sourceIntegrity.non_yanked_version_rows) === Number(statistics.total_versions), "source non-yanked versions do not match total_versions");
@@ -144,7 +151,6 @@ for (const field of [
   "owner_username_mismatch_count",
   "duplicate_download_module_count",
   "missing_download_module_count",
-  "orphan_download_module_count",
   "invalid_download_value_count",
   "invalid_download_updated_at_count",
   "owner_without_user_row_count",

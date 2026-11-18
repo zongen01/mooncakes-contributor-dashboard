@@ -11,13 +11,15 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function findSensitiveKeys(value, matches = []) {
+function findSensitiveKeys(value, path = [], matches = []) {
   if (!value || typeof value !== "object") return matches;
   for (const [key, child] of Object.entries(value)) {
-    if (/(?:^|_)(?:password|passwd|secret|access_token|refresh_token|oauth_token|github_token|token|email|phone|mobile)(?:_|$)/i.test(key)) {
+    const isModuleIdentifier = path.length === 1 && path[0] === "module_history" &&
+      /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(key);
+    if (!isModuleIdentifier && /(?:^|_)(?:password|passwd|secret|access_token|refresh_token|oauth_token|github_token|token|email|phone|mobile)(?:_|$)/i.test(key)) {
       matches.push(key);
     }
-    findSensitiveKeys(child, matches);
+    findSensitiveKeys(child, [...path, key], matches);
   }
   return matches;
 }

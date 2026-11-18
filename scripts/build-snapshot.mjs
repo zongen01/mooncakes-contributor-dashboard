@@ -311,11 +311,19 @@ function buildDataQuality({ modules, statistics, owners, ownerHistory, moduleHis
     },
     {
       id: "downloads_cover_modules",
-      label: "下载量表与有效模块一一对应",
+      label: "有效模块的下载计数完整且无重复",
       severity: "error",
       expected: 0,
-      actual: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0) + Number(sourceIntegrity.orphan_download_module_count || 0),
-      passed: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0) + Number(sourceIntegrity.orphan_download_module_count || 0) === 0
+      actual: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0),
+      passed: Number(sourceIntegrity.duplicate_download_module_count || 0) + Number(sourceIntegrity.missing_download_module_count || 0) === 0
+    },
+    {
+      id: "historical_download_counters",
+      label: "无有效模块对应的历史下载计数单独对账",
+      severity: "info",
+      expected: "recorded",
+      actual: Number(sourceIntegrity.orphan_download_module_count || 0),
+      passed: true
     },
     {
       id: "download_values_valid",
